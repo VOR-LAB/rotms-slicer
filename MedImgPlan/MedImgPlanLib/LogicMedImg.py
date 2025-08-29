@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-import os, json, logging, math, random, yaml, numpy
+import os, json, logging, math, random, yaml, numpy, datetime
 import vtk, qt, ctk, slicer
 
 from slicer.ScriptedLoadableModule import *
@@ -1298,6 +1298,13 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
         # print the range of distances
         scalars = computeScalarFromDistance(distances, mep, MAX_MEP=1.0)
         scalar_values = poly_data.GetPointData().GetScalars()
+
+        now = datetime.datetime.now()
+        filename = f"{now.year}.{now.month}.{now.day}.{now.hour}.{now.minute}.{now.second}.json"
+        # get the current working directory
+        path = os.getcwd()
+        with open(os.path.join(path, filename), 'w') as fp:
+            fp.write(f"Main coordinates: {intersection_points.GetPoint(0) }  and MEP value: {mep} \n")
 
         if not scalar_values:
             scalar_values = vtk.vtkDoubleArray()
