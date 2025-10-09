@@ -54,9 +54,17 @@ class Mapper:
         DataVec.SetOrigin(0, 0, 0)
         DataVec.SetSpacing(1, 1, 1)
 
+        extra = vtk.vtkMatrix4x4()
+        extra.Identity()
+        extra.SetElement(0, 3, +0.2880096435546875)
+        extra.SetElement(1, 3, -11.059928894042983)
+        extra.SetElement(2, 3, +31.69351959228517)  
 
-        matrix_current = vtk.vtkMatrix4x4() # current transform of the magnetic vector field
-        matrix_current.Multiply4x4(matrixFromFid, loader.coilDefaultMatrix, matrix_current)
+        effectiveFid = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Multiply4x4(matrixFromFid, extra, effectiveFid)
+
+        matrix_current = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Multiply4x4(effectiveFid, loader.coilDefaultMatrix, matrix_current)
 
         matrix_current_inv = vtk.vtkMatrix4x4()
         matrix_current_inv.Invert(matrix_current,matrix_current_inv)
@@ -98,6 +106,12 @@ class Mapper:
         loader.magfieldNode.SetAndObserveImageData(DataOut)
     
         loader.IGTLNode.PushNode(loader.magfieldNode)
+
+
+        try:
+            slicer.modules.SimulationWidget.requestPrediction()
+        except Exception as e:
+            print("Could not send PREDICT:", e)
 
 
         # time in seconds:
