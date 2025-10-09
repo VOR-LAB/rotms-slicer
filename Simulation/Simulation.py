@@ -79,64 +79,90 @@ class SimulationWidget(ScriptedLoadableModuleWidget):
         self.showGMButton = None
         self.example_path = "example_data"  # Default example path
 
+
+
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
 
-        # IGTL connections
+    #
+    # OpenIGTLink text connector (control channel)
+    #
         self.IGTLNode = slicer.vtkMRMLIGTLConnectorNode()
         slicer.mrmlScene.AddNode(self.IGTLNode)
         self.IGTLNode.SetName('TextConnector')
         self.IGTLNode.SetTypeClient('localhost', 18945)
-        # this will activate the the status of the connection:
         self.IGTLNode.Start()
-        # self.IGTLNode.RegisterIncomingMRMLNode(self.textNode)
         self.IGTLNode.PushOnConnect()
 
+    # Text node used to send/receive short commands (PING, PREDICT, etc.)
         self.textNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTextNode', 'TextMessage')
         self.textNode.SetForceCreateStorageNode(True)
-        observer = self.textNode.AddObserver(slicer.vtkMRMLTextNode.TextModifiedEvent, self.newText)
 
-        # Create GUI elements directly
+    # Register text node as OUTGOING so SetText() is transmitted over IGTL
+        self.IGTLNode.RegisterOutgoingMRMLNode(self.textNode)
+
+    # Observe replies from server (READY/PONG/PREDICT_OK/NO_MAGVEC/…)
+        self.textNodeObserver = self.textNode.AddObserver(
+            slicer.vtkMRMLTextNode.TextModifiedEvent, self._onTextStatusUpdate
+        )
+
+    #
+    # UI: TMS Visualization panel
+    #
         self.collapsibleButton = ctk.ctkCollapsibleButton()
         self.collapsibleButton.text = "TMS Visualization"
         self.layout.addWidget(self.collapsibleButton)
         self.formLayout = qt.QFormLayout(self.collapsibleButton)
-        
+
+    # Server status label (updated by _onTextStatusUpdate)
+        self.statusLabel = qt.QLabel("Status: —")
+        self.formLayout.addRow(self.statusLabel)
+
+    # Manual “Predict once” trigger
+        self.predictButton = qt.QPushButton("Predict once")
+        self.formLayout.addRow(self.predictButton)
+        self.predictButton.clicked.connect(self.requestPrediction)
+
+    # Load Example button (directory picker)
         def onLoadExampleClicked():
             fileDialog = qt.QFileDialog()
             fileDialog.setFileMode(qt.QFileDialog.Directory)
             if fileDialog.exec_():
-             selectedFile = fileDialog.selectedFiles()[0]
-             L.Loader.loadExample(selectedFile)
+                selectedFile = fileDialog.selectedFiles()[0]
+                L.Loader.loadExample(selectedFile)
 
         self.loadExampleButton = qt.QPushButton("Load Example", self.collapsibleButton)
         self.formLayout.addRow(self.loadExampleButton)
         self.loadExampleButton.clicked.connect(onLoadExampleClicked)
 
+    # Show Mesh
         self.meshButton = qt.QCheckBox("Show Mesh", self.collapsibleButton)
         self.meshButton.checked = True
         self.formLayout.addRow(self.meshButton)
         self.meshButton.stateChanged.connect(L.Loader.showMesh)
 
-        self.vouleRenderingButton = qt.QCheckBox("Show Volume Rendering", self.collapsibleButton)
-        self.vouleRenderingButton.checked = False
-        self.formLayout.addRow(self.vouleRenderingButton)
-        self.vouleRenderingButton.stateChanged.connect(L.Loader.showVolumeRendering)
+    # Show Volume Rendering
+        self.volumeRenderingButton = qt.QCheckBox("Show Volume Rendering", self.collapsibleButton)
+        self.volumeRenderingButton.checked = False
+        self.formLayout.addRow(self.volumeRenderingButton)
+        self.volumeRenderingButton.stateChanged.connect(L.Loader.showVolumeRendering)
 
+    # Show Fibers
         self.fiberButton = qt.QCheckBox("Show Fibers", self.collapsibleButton)
         self.fiberButton.checked = False
         self.formLayout.addRow(self.fiberButton)
         self.fiberButton.stateChanged.connect(L.Loader.showFibers)
 
         self.layout.addStretch(1)
-        # Create grid layout for matrix input field
+
+    #
+    # UI: Manual Coil Positioning panel (kept as-is)
+    #
         self.collapsibleButton3 = ctk.ctkCollapsibleButton()
         self.collapsibleButton3.text = "Manual Coil Positioning"
         self.layout.addWidget(self.collapsibleButton3)
         self.gridLayout = qt.QGridLayout(self.collapsibleButton3)
 
-        # Create labels for each matrix element
-        # Eszter, this is not useful for our purpose, consider deleting it in future
         labels = ["X", "Y", "Z"]
         for i in range(3):
             label = qt.QLabel(labels[i])
@@ -144,52 +170,47 @@ class SimulationWidget(ScriptedLoadableModuleWidget):
             label = qt.QLabel(labels[i])
             self.gridLayout.addWidget(label, i+1, 0)
 
-        # Create line edits for each matrix element
         self.matrixInputs = []
         for i in range(3):
             row = []
             for j in range(4):
                 matrixInput = qt.QLineEdit()
-                matrixInput.setFixedSize(50, 30)  # Set fixed size for QLineEdit widget
+                matrixInput.setFixedSize(50, 30)
                 row.append(matrixInput)
                 self.gridLayout.addWidget(matrixInput, i+1, j+1)
-                 # Connect the editingFinished signal of each QLineEdit to updateMatrix function
-                #matrixInput.editingFinished.connect(lambda: L.Loader.updateMatrix(self))
             self.matrixInputs.append(row)
 
-
-        # Create label to display current matrix position
         self.currentMatrixLabel = qt.QLabel("Current Matrix Position: ", self.collapsibleButton3)
         self.layout.addWidget(self.currentMatrixLabel)
-        # Create label to display matrix elements as text
+
         self.matrixTextLabel = qt.QLabel("", self.collapsibleButton3)
         self.layout.addWidget(self.matrixTextLabel)
-
-        #Until this line
 
         self.initialScalarArray = None
         self.layout.addStretch(1)
 
-    def newText(self, caller, event):
-        self.t = slicer.mrmlScene.GetNodeByID('vtkMRGMMLTextNode')
-        self.example_path = self.t.GetText()
-        # Update the loadExampleButton connection with the new example_path
-        self.loadExampleButton.clicked.disconnect()
-        self.loadExampleButton.clicked.connect(lambda: L.Loader.loadExample(self.example_path))
+    #
+    # Send a PING shortly after startup to show connectivity (updates Status to PONG)
+    #
+        qt.QTimer.singleShot(500, lambda: self.textNode.SetText("PING"))
 
-    def logMessage(self, *args):
-        if self.consoleMessages:
-            for arg in args:
-                print(arg)
-        if self.guiMessages:
-            if len(self.log.html) > 1024 * 256:
-                self.log.clear()
-                self.log.insertHtml("Log cleared\n")
-            for arg in args:
-                self.log.insertHtml(arg)
-            self.log.insertPlainText('\n')
-            self.log.ensureCursorVisible()
-            self.log.repaint()
+def requestPrediction(self):
+    """Send one-shot PREDICT to server.py via the text IGTL channel."""
+    try:
+        self.textNode.SetText("PREDICT")
+    except Exception as e:
+        print("Failed to send PREDICT:", e)
+
+def _onTextStatusUpdate(self, caller, event):
+    """Update the UI with last status coming back from the server."""
+    try:
+        msg = self.textNode.GetText().strip()
+    except Exception:
+        msg = ""
+    if msg:
+        self.statusLabel.setText(f"Status: {msg}")
+
+
 
 
 #
