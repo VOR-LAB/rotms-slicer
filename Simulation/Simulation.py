@@ -37,6 +37,8 @@ class SimulationWidget(ScriptedLoadableModuleWidget):
         self.selectedCoilMode = "Free Pose"
         self.parameterNode = None
 
+
+
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
 
@@ -141,6 +143,7 @@ class SimulationWidget(ScriptedLoadableModuleWidget):
         assetLayout.addRow("Coil scale", self.coilScaleSpinBox)
         self.coilScaleSpinBox.valueChanged.connect(self._onCoilScaleChanged)
 
+    # Show Mesh
         self.meshButton = qt.QCheckBox("Show Mesh", self.collapsibleButton)
         self.meshButton.checked = True
         self.formLayout.addRow(self.meshButton)

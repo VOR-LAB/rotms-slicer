@@ -99,6 +99,12 @@ class Mapper:
         qt.QTimer.singleShot(0, lambda n=loader.magfieldNode: loader.IGTLNode.PushNode(n))
 
 
+        try:
+            slicer.modules.SimulationWidget.requestPrediction()
+        except Exception as e:
+            print("Could not send PREDICT:", e)
+
+
         # time in seconds:
         if time:
             stop = timeit.default_timer()
