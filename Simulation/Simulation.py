@@ -26,250 +26,261 @@ This work was supported by your funding source.
     # def cleanup(self):
     #     ScriptedLoadableModule.cleanup(self)
 
-
-class SimulationLogic(ScriptedLoadableModuleLogic):
-    """This class should implement all the actual computation done by your module.
-    The interface should be such that other python code can import this class and make
-    use of the functionality without requiring an instance of the Widget.
-    Uses ScriptedLoadableModuleLogic base class, available at:
-    https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-    """
-    def __init__(self):
-        ScriptedLoadableModuleLogic.__init__(self)
-
-    def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
-        """
-        Run the processing algorithm.
-        Can be used without GUI widget.
-        :param inputVolume: volume to be thresholded
-        :param outputVolume: thresholding result
-        :param imageThreshold: values above/below this threshold will be set to 0
-        :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-        :param showResult: show output volume in slice viewers
-        """
-        if not inputVolume or not outputVolume:
-            raise ValueError("Input or output volume is invalid")
-
-        import time
-        startTime = time.time()
-        logging.info('Processing started')
-
-        # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-        cliParams = {
-            'InputVolume': inputVolume.GetID(),
-            'OutputVolume': outputVolume.GetID(),
-            'ThresholdValue': imageThreshold,
-            'ThresholdType': 'Above' if invert else 'Below'
-        }
-        cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None,
-                                 cliParams, wait_for_completion=True, update_display=showResult)
-        # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-        slicer.mrmlScene.RemoveNode(cliNode)
-
-        stopTime = time.time()
-        logging.info('Processing completed in {0:.2f} seconds'.format(
-            stopTime-startTime))
-
-
 class SimulationWidget(ScriptedLoadableModuleWidget):
     def __init__(self, parent=None):
         ScriptedLoadableModuleWidget.__init__(self, parent)
         self.guiMessages = True
         self.consoleMessages = True
         self.showGMButton = None
-        self.example_path = "example_data"  # Default example path
-
-
+        self.loader = None
+        self.example_path = self._defaultExamplePath()
+        self.selectedCoilMode = "Free Pose"
+        self.parameterNode = None
 
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
 
-    #
-    # OpenIGTLink text connector (control channel)
-    #
-        self.IGTLNode = slicer.vtkMRMLIGTLConnectorNode()
-        slicer.mrmlScene.AddNode(self.IGTLNode)
-        self.IGTLNode.SetName('TextConnector')
-        self.IGTLNode.SetTypeClient('localhost', 18945)
-        self.IGTLNode.Start()
-        self.IGTLNode.PushOnConnect()
+        self._setupTextConnector()
+        self._ensureParameterNode()
+        self.setupButtons()
+        self.layout.addStretch(1)
 
-    # Text node used to send/receive short commands (PING, PREDICT, etc.)
-        self.textNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTextNode', 'TextMessage')
-        self.textNode.SetForceCreateStorageNode(True)
-
-    # Register text node as OUTGOING so SetText() is transmitted over IGTL
-        self.IGTLNode.RegisterOutgoingMRMLNode(self.textNode)
-
-    # Observe replies from server (READY/PONG/PREDICT_OK/NO_MAGVEC/…)
-        self.textNodeObserver = self.textNode.AddObserver(
-            slicer.vtkMRMLTextNode.TextModifiedEvent, self._onTextStatusUpdate
-        )
-
-    #
-    # UI: TMS Visualization panel
-    #
+    def setupButtons(self):
         self.collapsibleButton = ctk.ctkCollapsibleButton()
         self.collapsibleButton.text = "TMS Visualization"
         self.layout.addWidget(self.collapsibleButton)
         self.formLayout = qt.QFormLayout(self.collapsibleButton)
 
-    # Server status label (updated by _onTextStatusUpdate)
-        self.statusLabel = qt.QLabel("Status: —")
-        self.formLayout.addRow(self.statusLabel)
+        # Data directory selection
+        self.examplePathEdit = qt.QLineEdit(self.collapsibleButton)
+        self.examplePathEdit.text = self.example_path
+        browseButton = qt.QPushButton("Browse", self.collapsibleButton)
+        pathLayout = qt.QHBoxLayout()
+        pathLayout.addWidget(self.examplePathEdit)
+        pathLayout.addWidget(browseButton)
+        pathWidget = qt.QWidget(self.collapsibleButton)
+        pathWidget.setLayout(pathLayout)
+        self.formLayout.addRow("Data directory", pathWidget)
+        browseButton.clicked.connect(self._onBrowseDataDirectory)
 
-    # Manual “Predict once” trigger
-        self.predictButton = qt.QPushButton("Predict once")
-        self.formLayout.addRow(self.predictButton)
-        self.predictButton.clicked.connect(self.requestPrediction)
-
-    # Load Example button (directory picker)
-        def onLoadExampleClicked():
-            fileDialog = qt.QFileDialog()
-            fileDialog.setFileMode(qt.QFileDialog.Directory)
-            if fileDialog.exec_():
-                selectedFile = fileDialog.selectedFiles()[0]
-                L.Loader.loadExample(selectedFile)
-
+        # Coil placement mode
+        self.coilModeCombo = qt.QComboBox(self.collapsibleButton)
+        self.coilModeCombo.addItems(["Free Pose", "Planned Pose"])
+        self.coilModeCombo.currentTextChanged.connect(self.onCoilModeChanged)
+        self.formLayout.addRow("Coil placement", self.coilModeCombo)
+        
+        slicer.modules.tractographydisplay.widgetRepresentation().activateWindow()
         self.loadExampleButton = qt.QPushButton("Load Example", self.collapsibleButton)
         self.formLayout.addRow(self.loadExampleButton)
-        self.loadExampleButton.clicked.connect(onLoadExampleClicked)
+        self.loadExampleButton.clicked.connect(self.onLoadExampleClicked)
 
-    # Show Mesh
+        assetOverridesBox = qt.QGroupBox("Asset overrides", self.collapsibleButton)
+        assetLayout = qt.QFormLayout(assetOverridesBox)
+        self.formLayout.addRow(assetOverridesBox)
+
+        self.coilSelector = slicer.qMRMLNodeComboBox(assetOverridesBox)
+        self.coilSelector.nodeTypes = ["vtkMRMLModelNode"]
+        self.coilSelector.noneEnabled = True
+        self.coilSelector.addEnabled = False
+        self.coilSelector.removeEnabled = False
+        self.coilSelector.renameEnabled = False
+        self.coilSelector.showHidden = False
+        self.coilSelector.setMRMLScene(slicer.mrmlScene)
+        assetLayout.addRow("Coil model", self.coilSelector)
+        self.coilSelector.currentNodeChanged.connect(lambda node: self._updateParameterNodeReference('coilModelNodeID', node))
+
+        self.skinSelector = slicer.qMRMLNodeComboBox(assetOverridesBox)
+        self.skinSelector.nodeTypes = ["vtkMRMLModelNode"]
+        self.skinSelector.noneEnabled = True
+        self.skinSelector.addEnabled = False
+        self.skinSelector.removeEnabled = False
+        self.skinSelector.renameEnabled = False
+        self.skinSelector.showHidden = False
+        self.skinSelector.setMRMLScene(slicer.mrmlScene)
+        assetLayout.addRow("Skin model", self.skinSelector)
+        self.skinSelector.currentNodeChanged.connect(lambda node: self._updateParameterNodeReference('skinModelNodeID', node))
+
+        self.magnormSelector = slicer.qMRMLNodeComboBox(assetOverridesBox)
+        self.magnormSelector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.magnormSelector.noneEnabled = True
+        self.magnormSelector.addEnabled = False
+        self.magnormSelector.removeEnabled = False
+        self.magnormSelector.renameEnabled = False
+        self.magnormSelector.showHidden = False
+        self.magnormSelector.setMRMLScene(slicer.mrmlScene)
+        assetLayout.addRow("MagNorm volume", self.magnormSelector)
+        self.magnormSelector.currentNodeChanged.connect(lambda node: self._updateParameterNodeReference('magnormNodeID', node))
+
+        self.magfieldSelector = slicer.qMRMLNodeComboBox(assetOverridesBox)
+        self.magfieldSelector.nodeTypes = ["vtkMRMLTransformNode"]
+        self.magfieldSelector.noneEnabled = True
+        self.magfieldSelector.addEnabled = False
+        self.magfieldSelector.removeEnabled = False
+        self.magfieldSelector.renameEnabled = False
+        self.magfieldSelector.showHidden = False
+        self.magfieldSelector.setMRMLScene(slicer.mrmlScene)
+        assetLayout.addRow("MagField transform", self.magfieldSelector)
+        self.magfieldSelector.currentNodeChanged.connect(lambda node: self._updateParameterNodeReference('magfieldNodeID', node))
+
+        self.conductivitySelector = slicer.qMRMLNodeComboBox(assetOverridesBox)
+        self.conductivitySelector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.conductivitySelector.noneEnabled = True
+        self.conductivitySelector.addEnabled = False
+        self.conductivitySelector.removeEnabled = False
+        self.conductivitySelector.renameEnabled = False
+        self.conductivitySelector.showHidden = False
+        self.conductivitySelector.setMRMLScene(slicer.mrmlScene)
+        assetLayout.addRow("Conductivity volume", self.conductivitySelector)
+        self.conductivitySelector.currentNodeChanged.connect(lambda node: self._updateParameterNodeReference('conductivityNodeID', node))
+
+        self.coilScaleSpinBox = qt.QDoubleSpinBox(assetOverridesBox)
+        self.coilScaleSpinBox.setDecimals(2)
+        self.coilScaleSpinBox.setMinimum(0.1)
+        self.coilScaleSpinBox.setMaximum(100.0)
+        self.coilScaleSpinBox.setValue(3.0)
+        assetLayout.addRow("Coil scale", self.coilScaleSpinBox)
+        self.coilScaleSpinBox.valueChanged.connect(self._onCoilScaleChanged)
+
         self.meshButton = qt.QCheckBox("Show Mesh", self.collapsibleButton)
         self.meshButton.checked = True
         self.formLayout.addRow(self.meshButton)
         self.meshButton.stateChanged.connect(L.Loader.showMesh)
 
-    # Show Volume Rendering
-        self.volumeRenderingButton = qt.QCheckBox("Show Volume Rendering", self.collapsibleButton)
-        self.volumeRenderingButton.checked = False
-        self.formLayout.addRow(self.volumeRenderingButton)
-        self.volumeRenderingButton.stateChanged.connect(L.Loader.showVolumeRendering)
-
-    # Show Fibers
-        self.fiberButton = qt.QCheckBox("Show Fibers", self.collapsibleButton)
-        self.fiberButton.checked = False
-        self.formLayout.addRow(self.fiberButton)
-        self.fiberButton.stateChanged.connect(L.Loader.showFibers)
+        self.vouleRenderingButton = qt.QCheckBox("Show Volume Rendering", self.collapsibleButton)
+        self.vouleRenderingButton.checked = False
+        self.formLayout.addRow(self.vouleRenderingButton)
+        self.vouleRenderingButton.stateChanged.connect(L.Loader.showVolumeRendering)
 
         self.layout.addStretch(1)
 
-    #
-    # UI: Manual Coil Positioning panel (kept as-is)
-    #
-        self.collapsibleButton3 = ctk.ctkCollapsibleButton()
-        self.collapsibleButton3.text = "Manual Coil Positioning"
-        self.layout.addWidget(self.collapsibleButton3)
-        self.gridLayout = qt.QGridLayout(self.collapsibleButton3)
-
-        labels = ["X", "Y", "Z"]
-        for i in range(3):
-            label = qt.QLabel(labels[i])
-            self.gridLayout.addWidget(label, 0, i+1)
-            label = qt.QLabel(labels[i])
-            self.gridLayout.addWidget(label, i+1, 0)
-
-        self.matrixInputs = []
-        for i in range(3):
-            row = []
-            for j in range(4):
-                matrixInput = qt.QLineEdit()
-                matrixInput.setFixedSize(50, 30)
-                row.append(matrixInput)
-                self.gridLayout.addWidget(matrixInput, i+1, j+1)
-            self.matrixInputs.append(row)
-
-        self.currentMatrixLabel = qt.QLabel("Current Matrix Position: ", self.collapsibleButton3)
+        # Current coil matrix display
+        self.currentMatrixLabel = qt.QLabel("Current Matrix Position: ", self.collapsibleButton)
         self.layout.addWidget(self.currentMatrixLabel)
-
-        self.matrixTextLabel = qt.QLabel("", self.collapsibleButton3)
+        self.matrixTextLabel = qt.QLabel("", self.collapsibleButton)
         self.layout.addWidget(self.matrixTextLabel)
+
 
         self.initialScalarArray = None
         self.layout.addStretch(1)
+        self._restoreSelectionsFromParameterNode()
 
-    #
-    # Send a PING shortly after startup to show connectivity (updates Status to PONG)
-    #
-        qt.QTimer.singleShot(500, lambda: self.textNode.SetText("PING"))
+    def _setupTextConnector(self):
+        # IGTL connections for sending dataset path to the server
+        self.IGTLNode = slicer.vtkMRMLIGTLConnectorNode()
+        slicer.mrmlScene.AddNode(self.IGTLNode)
+        self.IGTLNode.SetName('TextConnector')
+        self.IGTLNode.SetTypeClient('localhost', 18945)
+        self.IGTLNode.Start()
+        self.textNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTextNode', 'DatasetPath')
+        self.textNode.SetForceCreateStorageNode(True)
+        self.IGTLNode.RegisterOutgoingMRMLNode(self.textNode)
+        self.IGTLNode.PushOnConnect()
 
-def requestPrediction(self):
-    """Send one-shot PREDICT to server.py via the text IGTL channel."""
-    try:
-        self.textNode.SetText("PREDICT")
-    except Exception as e:
-        print("Failed to send PREDICT:", e)
+    def _defaultExamplePath(self):
+        return os.path.abspath(os.path.join(os.path.dirname(slicer.modules.simulation.path), '../../data/Example1'))
 
-def _onTextStatusUpdate(self, caller, event):
-    """Update the UI with last status coming back from the server."""
-    try:
-        msg = self.textNode.GetText().strip()
-    except Exception:
-        msg = ""
-    if msg:
-        self.statusLabel.setText(f"Status: {msg}")
+    def _onBrowseDataDirectory(self):
+        directory = qt.QFileDialog.getExistingDirectory(self.collapsibleButton, "Select data directory", self.examplePathEdit.text)
+        if directory:
+            self.examplePathEdit.text = directory
 
+    def _resolveExamplePath(self, path_text):
+        candidate = path_text.strip()
+        if os.path.isdir(candidate):
+            return os.path.abspath(candidate)
+        alt_candidate = os.path.abspath(os.path.join(os.path.dirname(slicer.modules.simulation.path), '../', candidate))
+        if os.path.isdir(alt_candidate):
+            return alt_candidate
+        raise FileNotFoundError(f"Could not find data directory: {candidate}")
 
+    def sendExamplePathToServer(self, example_path):
+        self.textNode.SetText(example_path)
+        self.IGTLNode.PushNode(self.textNode)
+        self.logMessage(f'Sent data directory to server: {example_path}')
 
+    def onLoadExampleClicked(self):
+        try:
+            resolved_path = self._resolveExamplePath(self.examplePathEdit.text)
+        except FileNotFoundError as exc:
+            slicer.util.errorDisplay(str(exc))
+            return
 
-#
-# SimulationTest
-#
+        self.example_path = resolved_path
+        self.sendExamplePathToServer(resolved_path)
+        overrides = self._collectOverrides()
+        self.loader = L.Loader.loadExample(resolved_path, overrides)
+        if self.loader:
+            self.loader.setCoilMode(self._coilModeKey(self.coilModeCombo.currentText))
 
-class SimulationTest(ScriptedLoadableModuleTest):
-    """
-    This is the test case for your scripted module.
-    Uses ScriptedLoadableModuleTest base class, available at:
-    https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-    """
+    def logMessage(self, *args):
+        for arg in args:
+            print(arg)
 
-    def setUp(self):
-        """ Do whatever is needed to reset the state - typically a scene clear will be enough.
-        """
-        slicer.mrmlScene.Clear(0)
+    def onCoilModeChanged(self, text):
+        self.selectedCoilMode = text
+        if self.loader:
+            self.loader.setCoilMode(self._coilModeKey(text))
 
-    def runTest(self):
-        """Run as few or as many tests as needed here.
-        """
-        self.setUp()
-        self.test_Simulation1()
-
-    def test_Simulation1(self):
-        """ Ideally you should have several levels of tests.  At the lowest level
-        tests should exercise the functionality of the logic with different inputs
-        (both valid and invalid).  At higher levels your tests should emulate the
-        way the user would interact with your code and confirm that it still works
-        the way you intended.
-        One of the most important features of the tests is that it should alert other
-        developers when their changes will have an impact on the behavior of your
-        module.  For example, if a developer removes a feature that you depend on,
-        your test should break so they know that the feature is needed.
-        """
-
-        self.delayDisplay("Starting the test")
-
-        # Test the module logic
-        logic = SimulationLogic()
-
-        # Test the module widget
-        widget = SimulationWidget()
-        widget.setup()
-
-        self.delayDisplay('Test passed!')
+    @staticmethod
+    def _coilModeKey(label):
+        return "planned" if label == "Planned Pose" else "free"
 
 
-#
-# Simulation initialization
-#
+    def _ensureParameterNode(self):
+        try:
+            self.parameterNode = slicer.util.getNode('SimulationParameters')
+        except Exception:
+            self.parameterNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLScriptedModuleNode', 'SimulationParameters')
 
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        import unittest
-        unittest.main(argv=sys.argv[1:])
-    else:
-        # Create and register the module
-        module = Simulation(None)
-        module.setup()
+    def _updateParameterNodeReference(self, key, node):
+        if not self.parameterNode:
+            return
+        self.parameterNode.SetParameter(key, node.GetID() if node else '')
 
+    def _onCoilScaleChanged(self, value):
+        if not self.parameterNode:
+            return
+        self.parameterNode.SetParameter('coilScale', str(value))
+
+    def _restoreSelectionsFromParameterNode(self):
+        if not self.parameterNode:
+            return
+        self.coilSelector.setCurrentNodeID(self.parameterNode.GetParameter('coilModelNodeID') or None)
+        self.skinSelector.setCurrentNodeID(self.parameterNode.GetParameter('skinModelNodeID') or None)
+        self.magnormSelector.setCurrentNodeID(self.parameterNode.GetParameter('magnormNodeID') or None)
+        self.magfieldSelector.setCurrentNodeID(self.parameterNode.GetParameter('magfieldNodeID') or None)
+        self.conductivitySelector.setCurrentNodeID(self.parameterNode.GetParameter('conductivityNodeID') or None)
+        coil_scale = self.parameterNode.GetParameter('coilScale')
+        if coil_scale:
+            try:
+                self.coilScaleSpinBox.value = float(coil_scale)
+            except ValueError:
+                pass
+
+    def _collectOverrides(self):
+        def node_from_param(key):
+            if not self.parameterNode:
+                return None
+            node_id = self.parameterNode.GetParameter(key)
+            if not node_id:
+                return None
+            try:
+                return slicer.mrmlScene.GetNodeByID(node_id)
+            except Exception:
+                return None
+
+        overrides = {
+            'coilModelNode': node_from_param('coilModelNodeID'),
+            'skinModelNode': node_from_param('skinModelNodeID'),
+            'magnormNode': node_from_param('magnormNodeID'),
+            'magfieldTransform': node_from_param('magfieldNodeID'),
+            'conductivityNode': node_from_param('conductivityNodeID'),
+        }
+        if self.parameterNode:
+            coil_scale_val = self.parameterNode.GetParameter('coilScale')
+            if coil_scale_val:
+                try:
+                    overrides['coilScale'] = float(coil_scale_val)
+                except ValueError:
+                    pass
+        return overrides

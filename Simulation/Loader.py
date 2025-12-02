@@ -24,7 +24,6 @@ class Loader:
             return
         self._graymatter_file = os.path.basename(brainModelFile)
 
-        self._fiber_file = 'fibers.vtk'
         self._coil_file = 'coil.stl'
         self._coil_scale = 3
         self._skin_file = 'skin.stl'
@@ -33,7 +32,6 @@ class Loader:
         self._conductivity_file = 'conductivity.nii.gz'
 
         self.modelNode = None
-        self.fiberNode = None
         self.coilNode = None
         self.skinNode = None
         self.markupsPlaneNode = None
@@ -49,64 +47,22 @@ class Loader:
         self.IGTLNode = None
 
         self.showMag = False #switch between magnetic and electric field for visualization
+        self.coil_mode = 'free'
+        self._planned_transform_observer = None
+        self._updating_pose = False
+        self.planned_transform_name = "Transform_9"
 
     def callMapper(self, param1=None, param2=None):
+        if self._updating_pose:
+            return
         M.Mapper.map(self, time=True)
-
-    def showFibers(self):
-        fiberNode1 = slicer.util.getNode('fibers')
-        brainTransparentNode = slicer.util.getNode('brainTransparent')
-        nodes = slicer.mrmlScene.GetNodesByName('FiberBundle')
-        if self == 2:
-            print("Show Fibers")
-            if nodes.GetNumberOfItems() > 0:
-                slicer.util.getNode('FiberBundle').SetDisplayVisibility(1)
-                fiberNode1.SetDisplayVisibility(0)
-            else:
-                fiberNode1.SetDisplayVisibility(1)
-        elif self == 0:
-            print("Hide Fibers")
-            if nodes.GetNumberOfItems() > 0:
-                slicer.util.getNode('FiberBundle').SetDisplayVisibility(0)
-                fiberNode1.SetDisplayVisibility(0)
-            else:
-                fiberNode1.SetDisplayVisibility(0)
-
-
-    def updateMatrix(self):
-        # Create a 4x4 matrix with the values entered by the user
-        matrix = vtk.vtkMatrix4x4()
-        for i in range(3):
-            for j in range(3):
-                value = float(self.matrixInputs[i][j].text.replace(',', '.'))
-                matrix.SetElement(i, j, value)
-            # Set default values for the last row and last column of matrix
-        matrix.SetElement(0, 3, 0.0)
-        matrix.SetElement(1, 3, 0.0)
-        matrix.SetElement(2, 3, 0.0)
-        matrix.SetElement(3, 3, 1.0)
-
-
-        # Get the vtkMRMLMarkupsPlaneNode and update its matrix
-        planeNode = slicer.util.getNode("vtkMRMLMarkupsPlaneNode1")
-        if planeNode is not None:
-            planeNode.ApplyTransformMatrix(matrix)
-            # planeNode.SetNthControlPointOrientationMatrix(0, matrix)
-            # transform1 = vtk.vtkTransform()
-            # transform1.SetMatrix(matrix)
-            # # planeNode.SetMatrixTransformToParent(matrix)
-            # tfN.SetAndObserveTransformToParent(transform1)
-            planeNode.UpdateScene(slicer.mrmlScene)
-
 
     def showMesh(self):
         brainTransparentNode = slicer.util.getNode('brainTransparent')
-        fiberNode1 = slicer.util.getNode('fibers')
         modelNode = slicer.util.getNode('gm')
         if self == 2:
             print("Show Brain Surface")
             modelNode.SetDisplayVisibility(1)
-            fiberNode1.SetDisplayVisibility(0)
             brainTransparentNode.SetDisplayVisibility(0)
         elif self == 0:
             print("Hide Brain Surface")
@@ -137,13 +93,16 @@ class Loader:
 
 #  this was @staticmethod before?
     @classmethod
-    def loadExample(self, example_path):
+    def loadExample(self, example_path, overrides=None):
 
-        print('Your selected Example: ' + example_path)
-        data_directory = example_path  # Full path already selected by user
+        data_directory = Loader._resolve_data_directory(example_path)
 
+        print('Your selected Example: ' + data_directory)
 
         loader = Loader(data_directory)
+        overrides = overrides or {}
+        if overrides.get('coilScale') is not None:
+            loader._coil_scale = overrides['coilScale']
 
         # slicer.mrmlScene.Clear()
 
@@ -153,112 +112,32 @@ class Loader:
         brainModelFile = os.path.join( loader.data_directory, loader._graymatter_file )
         loader.modelNode = slicer.modules.models.logic().AddModel(brainModelFile,
                                                                 slicer.vtkMRMLStorageNode.CoordinateSystemRAS)
-    
+
+
         loader.brainTransparentNode = slicer.modules.models.logic().AddModel(brainModelFile,
                                                                 slicer.vtkMRMLStorageNode.CoordinateSystemRAS)
         loader.brainTransparentNode.SetName('brainTransparent')
         brainTransparentDisplayNode = loader.brainTransparentNode.GetDisplayNode()
         brainTransparentDisplayNode.SetOpacity(0.3)
         brainTransparentDisplayNode.SetColor(0.7, 0.7, 0.7)
-        # brainTransparentDisplayNode.SetVisibility(False)
         loader.brainTransparentNode.SetDisplayVisibility(False)
-
-        tx = vtk.vtkTransform()
-        tx.PostMultiply()  # cant access the transformation parameter node in medimgplan used manual hardcode values
-        tx.Translate(
-            -0.2880096435546875,   # X
-            11.059928894042983,    # Y
-            -31.69351959228517     # Z
-        )
-
-# Apply to solid hemisphere
-        # Solid hemisphere
-        tf1 = vtk.vtkTransformPolyDataFilter()
-        tf1.SetInputData(loader.modelNode.GetPolyData())
-        tf1.SetTransform(tx)
-        tf1.Update()
-        loader.modelNode.SetAndObservePolyData(tf1.GetOutput())
-        loader.modelNode.SetAndObserveTransformNodeID(None)
-
         #
-        # 2. Fibers:
-        #
-
-        fiberModelFile = os.path.join( loader.data_directory, loader._fiber_file )
-        # loader.fiberNode = slicer.modules.models.logic().AddModel(fiberModelFile,
-                                                                # slicer.vtkMRMLStorageNode.CoordinateSystemRAS)
-
-        loader.fiberNode = slicer.util.loadFiberBundle(fiberModelFile)
-        loader.fiberNode.GetTubeDisplayNode().SetVisibility(False)
-        loader.fiberNode.SetDisplayVisibility(False)
-
-
-
-        ######### Downsampling of the tractography fibers first -- IF THE FILE IS LARGE e.g. full brain tractography #############
-        loader.fibers_downsampled = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLFiberBundleNode', 'FiberBundle')
-        # loader.fibers_downsampled.SetDisplayVisibility(False)
-        loader.fibers_downsampled.GetTubeDisplayNode().SetVisibility(False)
-        slicer.modules.tractographydownsample.widgetRepresentation().activateWindow()
-        slicer.modules.TractographyDownsampleWidget.inputSelector.addEnabled = True
-        slicer.modules.TractographyDownsampleWidget.inputSelector.setCurrentNode(slicer.util.getNode('fibers'))
-        slicer.modules.TractographyDownsampleWidget.outputSelector.addEnabled = True
-        slicer.modules.TractographyDownsampleWidget.outputSelector.setCurrentNode(loader.fibers_downsampled)
-        slicer.modules.TractographyDownsampleWidget.fiberStepSizeWidget.setValue(5.00)
-        slicer.modules.TractographyDownsampleWidget.fiberPercentageWidget.setValue(1.00)
-        slicer.modules.TractographyDownsampleWidget.fiberMinimumPointsWidget.setValue(3)
-        slicer.modules.TractographyDownsampleWidget.fiberMinimumLengthWidget.setValue(10.00)
-        slicer.modules.TractographyDownsampleWidget.fiberMaximumLengthWidget.setValue(180.00)
-        slicer.modules.TractographyDownsampleWidget.applyButton.enabled = True
-        slicer.modules.TractographyDownsampleWidget.onApplyButton()
-
-        # setting the downsampled fibers as new fibernode for further processing
-        loader.fiberNode = slicer.util.getNode('FiberBundle')
-        loader.fiberNode.GetDisplayNode().SetVisibility(False)
-
-
-        #### Create ROI Node for Fibers ############
-        loader.roi = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode', 'ROI')
-        # roi = vtk.vtkSlicerAnnotationsModuleMRML.vtkMRMLAnnotationROINode()
-        # Set size of the ROI:
-        slicer.util.getNode('ROI').SetRadiusXYZ(20.0, 20.0, 20.0)
-        slicer.util.getNode('ROI').SetXYZ(0.0, 0.0, 30.0)
-        # slicer.util.getNode('ROI').GetDisplayNode().SetVisibility(False)
-        slicer.util.getNode('ROI').SetDisplayVisibility(False)
-
-        ## FIBER SELECTION ########### this might need to be updated along with the slicer dmri module
-        slicer.modules.tractographydisplay.widgetRepresentation().activateWindow()
-        w = slicer.modules.tractographydisplay.widgetRepresentation()
-        simpleDisplay = slicer.util.findChildren(w, text='Simple Display')[0]
-        # w.setFiberBundleNode(slicer.util.getNode('fibers'))
-        treeView = slicer.util.findChildren(simpleDisplay, name = "TractographyDisplayTreeView")[0]
-        treeView.setCurrentNode(loader.fiberNode)
-        # slicer.util.delayDisplay('update')
-        ww = slicer.util.findChildren(w, className= "*ROI*")[0]
-        ww.enabled
-        combo = slicer.util.findChildren(ww, name = "ROIForFib*Selector")[0]
-        combo.setCurrentNode(slicer.util.getNode('ROI'))
-        wx = slicer.util.findChildren(w, name = "Positive*")[0] # This is the radiobutton for positive ROI
-        if wx.checked == False:
-            wx.click()
-        # ww.updateBundleFromSelection()
-
-
-        #
-        # 3. Skin model:
+        # 2. Skin model:
         #
         skin = os.path.join( loader.data_directory, loader._skin_file )
-        loader.skinNode = slicer.modules.models.logic().AddModel(skin, slicer.vtkMRMLStorageNode.CoordinateSystemRAS)
-        skinDisplayNode = loader.skinNode.GetDisplayNode()
-        skinDisplayNode.SetColor(0.8, 0.8, 0.8)
-        skinDisplayNode.SetOpacity(0.35)
+        skin_override = overrides.get('skinModelNode')
+        loader.skinNode = skin_override or slicer.modules.models.logic().AddModel(skin, slicer.vtkMRMLStorageNode.CoordinateSystemRAS)
+        if not skin_override:
+            skinDisplayNode = loader.skinNode.GetDisplayNode()
+            skinDisplayNode.SetColor(0.8, 0.8, 0.8)
+            skinDisplayNode.SetOpacity(0.35)
 
 
         #
-        # 4. TMS coil:
+        # 3. TMS coil:
         #
         coil = os.path.join( loader.data_directory, loader._coil_file )
-        
-        loader.coilNode = slicer.modules.models.logic().AddModel(coil, slicer.vtkMRMLStorageNode.CoordinateSystemRAS)
+        loader.coilNode = overrides.get('coilModelNode') or slicer.modules.models.logic().AddModel(coil, slicer.vtkMRMLStorageNode.CoordinateSystemRAS)
         
         # Set transform on the coil and resize it:
         parentTransform = vtk.vtkTransform()
@@ -266,36 +145,60 @@ class Loader:
         
         loader.coilNode.ApplyTransformMatrix(parentTransform.GetMatrix())
 
+        # Add a plane to the scene
+        markupsPlaneNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsPlaneNode', 'Coil')
+        # markupsPlaneNode.SetOrigin([0, 0, 110])
+        # markupsPlaneNode.SetOrigin([0, 0, 0])
+        # markupsPlaneNode.SetNormalWorld([0, 0, -10])
+        markupsPlaneNode.SetNormalWorld([0, 0, -1])
+        markupsPlaneNode.SetAxes([.5, 0, 0], [0, .5, 0], [0, 0, .5])
+        markupsPlaneNode.SetSize(10,10) # or SetPlaneBounds()
+        markupsPlaneNode.GetMarkupsDisplayNode().SetHandlesInteractive(True)
+        markupsPlaneNode.GetMarkupsDisplayNode().SetRotationHandleVisibility(1)
+        markupsPlaneNode.GetMarkupsDisplayNode().SetTranslationHandleVisibility(1)
+        markupsPlaneNode.GetMarkupsDisplayNode().SetOpacity(0.6)
+        markupsPlaneNode.GetMarkupsDisplayNode().SetInteractionHandleScale(1.5)
+        markupsPlaneNode.GetDisplayNode().SetSnapMode(slicer.vtkMRMLMarkupsDisplayNode.SnapModeToVisibleSurface)
+        markupsPlaneNode.SetDisplayVisibility(1)
 
+        loader.markupsPlaneNode = markupsPlaneNode
 
-        # Get the existing Transform_9 node
-        try:
-            loader.transformNode = slicer.util.getNode("Transform_9")
-        except:
-            import warnings
-            warnings.warn("Transform_9 node not found. Please create it first.")
-            return None
+        loader.transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "HandleTransform")
 
-        # Set the transform for the coil and ROI
+        # loader.transformNode = slicer.mrmlScene.AddNode(slicer.vtkMRMLLinearTransformNode())
         loader.coilNode.SetAndObserveTransformNodeID(loader.transformNode.GetID())
-        loader.roi.SetAndObserveTransformNodeID(loader.transformNode.GetID())
+        # Keep plane independent; we use its world matrix to drive the coil transform
+        loader.markupsPlaneNode.SetAndObserveTransformNodeID(None)
+
+        # Align plane origin to coil center to avoid offsets
+        if loader.coilNode.GetPolyData():
+            cx, cy, cz = loader.coilNode.GetPolyData().GetCenter()
+            loader.markupsPlaneNode.SetOrigin([cx, cy, cz])
+        else:
+            loader.markupsPlaneNode.SetOrigin([0, 0, 0])
+
+        # Coil placement mode defaults to free; handles are on by default
+        loader._setHandleVisibility(True)
 
         #
-        # 5. Other stuff
+        # 4. Other stuff
         #
 
         # load magnorm (used for tesing and visualization, not useful for predicting E-field)
-        loader.magnormNode = slicer.util.loadVolume( os.path.join( loader.data_directory, loader._magnorm_file ) )
-        loader.magnormNode.SetName('MagNorm')
+        magnorm_override = overrides.get('magnormNode')
+        loader.magnormNode = magnorm_override or slicer.util.loadVolume( os.path.join( loader.data_directory, loader._magnorm_file ) )
+        if not magnorm_override:
+            loader.magnormNode.SetName('MagNorm')
         loader.magnormNode.GetIJKToRASMatrix(loader.coilDefaultMatrix)
 
 
         # load magvector as a GridTransformNode 
         # the grid transform node (GTNode) only provides the 4D vtkImageData in the original space
-        loader.magfieldGTNode  = slicer.util.loadTransform(os.path.join( loader.data_directory, loader._magfield_file ))
+        loader.magfieldGTNode  = overrides.get('magfieldTransform') or slicer.util.loadTransform(os.path.join( loader.data_directory, loader._magfield_file ))
 
         # load conductivity
-        loader.conductivityNode = slicer.util.loadVolume( os.path.join( loader.data_directory, loader._conductivity_file ) )
+        conductivity_override = overrides.get('conductivityNode')
+        loader.conductivityNode = conductivity_override or slicer.util.loadVolume( os.path.join( loader.data_directory, loader._conductivity_file ) )
 
         # creat magfield vector volumeNode for visualizing rotated RBG-coded magnetic vector field
         loader.magfieldNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLScalarVolumeNode')
@@ -332,6 +235,10 @@ class Loader:
         # loader.pyigtlNode.Copy(loader.enormNode)
         loader.pyigtlNode.SetName('pyigtl_data')
 
+        # Display setting
+        # conductivityDisplayNode = loader.conductivityNode.GetDisplayNode()
+        # conductivityDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeGrey')
+        # conductivityDisplayNode.SetVisibility2D(True)
 
         pyigtlDisplayNode = loader.pyigtlNode.GetDisplayNode()
         pyigtlDisplayNode.AutoWindowLevelOff()
@@ -352,22 +259,105 @@ class Loader:
         loader.callMapper()
 
         # # interaction hookup
-        #loader.markupsPlaneNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, loader.callMapper)
-        #loader.transformNavigationNode.AddObserver(slicer.vtkMRMLTransformableNode.TransformModifiedEvent, loader.callMapper)
+        loader.markupsPlaneNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, loader.callMapper)
         #slicer.mrmlScene.AddObserver(slicer.vtkMRMLScene.NodeAddedEvent, loader.onNodeRcvd)
 
-        self.transformNavigationNode = slicer.util.getNode("Transform_9")
-        if self.transformNavigationNode is None:
-            self.transformNavigationNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Transform_9')
-
-
-        MedImgPlanCoilTransform = slicer.vtkMRMLTransformNode()
-        MedImgPlanCoilMat4x4 = vtk.vtkMatrix4x4()
-        success = MedImgPlanCoilTransform.GetMatrixTransformToWorld(MedImgPlanCoilMat4x4)
-        if success:
-            loader.transformNavigationNode.ApplyTransformMatrix(MedImgPlanCoilMat4x4)
-            print("Matrix applied to the coil navigation transform")
-        else:
-            RuntimeWarning("No coil pose found!")
-
         return loader
+
+    @staticmethod
+    def _resolve_data_directory(example_path):
+        if not example_path:
+            raise FileNotFoundError("No data directory provided.")
+        if os.path.isabs(example_path):
+            candidate = example_path
+        else:
+            candidate = os.path.join(os.path.dirname(slicer.modules.slicertms.path), '../', example_path)
+        candidate = os.path.abspath(candidate)
+        if not os.path.isdir(candidate):
+            raise FileNotFoundError(f"Data directory does not exist: {candidate}")
+        return candidate
+
+    #
+    # Coil placement helpers
+    #
+    def _setHandleVisibility(self, visible: bool):
+        if not self.markupsPlaneNode:
+            return
+        display_node = self.markupsPlaneNode.GetMarkupsDisplayNode()
+        display_node.SetHandlesInteractive(1 if visible else 0)
+        display_node.SetRotationHandleVisibility(1 if visible else 0)
+        display_node.SetTranslationHandleVisibility(1 if visible else 0)
+
+    def setCoilMode(self, mode: str):
+        """mode: 'free' or 'planned'"""
+        self.coil_mode = mode
+        if mode == 'planned':
+            self._setHandleVisibility(False)
+            self._observePlannedTransform()
+            self.callMapper()
+        else:
+            self._setHandleVisibility(True)
+            self._removePlannedTransformObserver()
+
+    def _observePlannedTransform(self):
+        self._removePlannedTransformObserver()
+        try:
+            node = slicer.util.getNode(self.planned_transform_name)
+        except Exception:
+            slicer.util.errorDisplay(f"Planned transform '{self.planned_transform_name}' not found. Reverting to free mode.")
+            self.coil_mode = 'free'
+            self._setHandleVisibility(True)
+            return
+        self._planned_transform_observer = node.AddObserver(
+            slicer.vtkMRMLTransformableNode.TransformModifiedEvent, self.callMapper)
+
+    def _removePlannedTransformObserver(self):
+        if not self._planned_transform_observer:
+            return
+        try:
+            node = slicer.util.getNode(self.planned_transform_name)
+            node.RemoveObserver(self._planned_transform_observer)
+        except Exception:
+            pass
+        self._planned_transform_observer = None
+
+    def applyCoilMatrix(self, matrix: vtk.vtkMatrix4x4):
+        """Apply matrix to coil transform (plane stays independent)."""
+        if self._updating_pose:
+            return
+        self._updating_pose = True
+        try:
+            self.transformNode.SetMatrixTransformToParent(matrix)
+            if self.markupsPlaneNode:
+                self.markupsPlaneNode.UpdateScene(slicer.mrmlScene)
+            self.transformNode.UpdateScene(slicer.mrmlScene)
+        finally:
+            self._updating_pose = False
+
+    def getPlannedMatrix(self):
+        node = slicer.util.getNode(self.planned_transform_name)
+        base_matrix = vtk.vtkMatrix4x4()
+        node.GetMatrixTransformToParent(base_matrix)
+
+        # Account for coil body frame: rotate 180 degrees about X after the planned transform
+        rx180 = vtk.vtkMatrix4x4()
+        rx180.DeepCopy((
+            1, 0,  0, 0,
+            0, -1, 0, 0,
+            0, 0, -1, 0,
+            0, 0,  0, 1
+        ))
+
+        dz = vtk.vtkMatrix4x4()
+        dz.DeepCopy((
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, -9.0,
+            0, 0, 0, 1
+        ))
+
+        adjusted_matrix = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Multiply4x4(base_matrix, rx180, adjusted_matrix)
+
+        vtk.vtkMatrix4x4.Multiply4x4(adjusted_matrix, dz, adjusted_matrix)
+        return adjusted_matrix
