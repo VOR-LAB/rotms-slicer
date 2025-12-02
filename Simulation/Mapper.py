@@ -13,13 +13,16 @@ class Mapper:
 
     @classmethod
     def map(cls, loader, time=True):
-        if not loader.transformNode:
-            import warnings
-            warnings.warn("Transform_9 node not found. Please create it first.")
+        if loader._updating_pose:
             return
 
         matrixFromFid = vtk.vtkMatrix4x4()
-        loader.transformNode.GetMatrixTransformToParent(matrixFromFid)
+        if loader.coil_mode == 'planned':
+            matrixFromFid.DeepCopy(loader.getPlannedMatrix())
+            loader.applyCoilMatrix(matrixFromFid)
+        else:
+            loader.markupsPlaneNode.GetObjectToWorldMatrix(matrixFromFid)
+            loader.applyCoilMatrix(matrixFromFid)
 
         # Update matrix text label in Widget:
         matrixText = ""
@@ -54,17 +57,22 @@ class Mapper:
         DataVec.SetOrigin(0, 0, 0)
         DataVec.SetSpacing(1, 1, 1)
 
-        extra = vtk.vtkMatrix4x4()
-        extra.Identity()
-        extra.SetElement(0, 3, +0.2880096435546875)
-        extra.SetElement(1, 3, -11.059928894042983)
-        extra.SetElement(2, 3, +31.69351959228517)  
+        # When using a planned pose, there may be a hidden parent transform (e.g. FSModel_brainToWorld).
+        # We only want the coil pose relative to the brain, so strip that parent by applying its inverse.
+        matrix_for_field = vtk.vtkMatrix4x4()
+        matrix_for_field.DeepCopy(matrixFromFid)
+        # if loader.coil_mode == 'planned':
+        #     try:
+        #         hidden_tfm = slicer.util.getNode('FSModel_brainToWorld')
+        #         if hidden_tfm.IsTransformToWorldLinear():
+        #             hidden_matrix = vtk.vtkMatrix4x4()
+        #             hidden_tfm.GetMatrixTransformToWorld(hidden_matrix)
+        #             matrix_for_field.Multiply4x4(hidden_matrix, matrixFromFid, matrix_for_field)
+        #     except Exception:
+        #         pass
 
-        effectiveFid = vtk.vtkMatrix4x4()
-        vtk.vtkMatrix4x4.Multiply4x4(matrixFromFid, extra, effectiveFid)
-
-        matrix_current = vtk.vtkMatrix4x4()
-        vtk.vtkMatrix4x4.Multiply4x4(effectiveFid, loader.coilDefaultMatrix, matrix_current)
+        matrix_current = vtk.vtkMatrix4x4() # current transform of the magnetic vector field
+        matrix_current.Multiply4x4(matrix_for_field, loader.coilDefaultMatrix, matrix_current)
 
         matrix_current_inv = vtk.vtkMatrix4x4()
         matrix_current_inv.Invert(matrix_current,matrix_current_inv)
@@ -99,19 +107,16 @@ class Mapper:
         # # reshape the numpy array
         DataOut_np_rot = np.reshape(DataOut_np_rot,(xyz[0], xyz[1], xyz[2], 3))
 
-        VTK_array = numpy_to_vtk(DataOut_np_rot.ravel(), deep=True, array_type=vtk.VTK_DOUBLE)
+        # Downcast to float before sending over IGTL to keep transfers fast and avoid UI stalls
+        DataOut_np_rot = DataOut_np_rot.astype(np.float32, copy=False)
+
+        VTK_array = numpy_to_vtk(DataOut_np_rot.ravel(), deep=True, array_type=vtk.VTK_FLOAT)
         DataOut.GetPointData().SetScalars(VTK_array)
         DataOut.GetPointData().GetScalars().SetNumberOfComponents(3)
 
         loader.magfieldNode.SetAndObserveImageData(DataOut)
-    
-        loader.IGTLNode.PushNode(loader.magfieldNode)
-
-
-        try:
-            slicer.modules.SimulationWidget.requestPrediction()
-        except Exception as e:
-            print("Could not send PREDICT:", e)
+        # Queue the IGTL push so the UI thread is not blocked by large sends
+        qt.QTimer.singleShot(0, lambda n=loader.magfieldNode: loader.IGTLNode.PushNode(n))
 
 
         # time in seconds:
@@ -158,20 +163,6 @@ class Mapper:
         # activate scalars
         brainNode.GetDisplayNode().SetActiveScalarName('ImageScalars')
         
-        ### if fiber bundle, then scalars need to be set different:
-        fibers = slicer.util.getNode('fibers')
-        fibers.GetDisplayNode().SetColorMode(fibers.GetDisplayNode().colorModeScalarData)
-        fibers.GetDisplayNode().SetAndObserveColorNodeID(slicer.util.getNode('ColdToHotRainbow').GetID())
-        # # We only want to see the lines of the fibers first, not the tubes:
-        fibers.GetTubeDisplayNode().SetVisibility(False)
-
-        ### Same for the downsampled fibers:
-        fibers1 = slicer.util.getNode('FiberBundle')
-        fibers1.GetDisplayNode().SetColorMode(fibers1.GetDisplayNode().colorModeScalarData)
-        fibers1.GetDisplayNode().SetAndObserveColorNodeID(slicer.util.getNode('ColdToHotRainbow').GetID())
-        # # We only want to see the lines of the fibers first, not the tubes:
-        fibers1.GetTubeDisplayNode().SetVisibility(False)
-
         # select color scheme for scalars
         brainNode.GetDisplayNode().SetAndObserveColorNodeID(slicer.util.getNode('ColdToHotRainbow').GetID())
         brainNode.GetDisplayNode().ScalarVisibilityOn()
@@ -191,7 +182,6 @@ class Mapper:
 
         # this part will need to be done with the resampling (it only maps the incoming pyigtl image to the brain):
         Mapper.mapElectricfieldToMesh(loader.pyigtlNode, loader.modelNode)
-        Mapper.mapElectricfieldToMesh(loader.pyigtlNode, loader.fiberNode)
 
         # Jump to maximum point of E field
         pyigtl_data_image = sitkUtils.PullVolumeFromSlicer(loader.pyigtlNode)
