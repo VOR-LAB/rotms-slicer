@@ -32,9 +32,11 @@ class Loader:
         self._conductivity_file = 'conductivity.nii.gz'
 
         self.modelNode = None
+        self.brainTransparentNode = None
         self.coilNode = None
         self.skinNode = None
         self.markupsPlaneNode = None
+        self.transformNode = None
 
         self.conductivityNode = None
         self.magfieldGTNode = None

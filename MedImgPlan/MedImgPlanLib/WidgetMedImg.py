@@ -531,16 +531,22 @@ class MedImgPlanWidget(MedImgPlanWidgetBase):
                 float(self._parameterNode.GetParameter("GridPlanIndicatorNumPrev"))
             )
             for i in range(prevnum):
-                slicer.mrmlScene.RemoveNode(
-                    self._parameterNode.GetNodeReference(
-                        "GridPlanTransformNum" + str(i)
-                    )
+                gridPlanTransform = self._parameterNode.GetNodeReference(
+                    "GridPlanTransformNum" + str(i)
                 )
-                slicer.mrmlScene.RemoveNode(
-                    self._parameterNode.GetNodeReference(
-                        "GridPlanIndicatorNum" + str(i)
-                    )
+                if gridPlanTransform:
+                    slicer.mrmlScene.RemoveNode(gridPlanTransform)
+
+                gridPlanIndicator = self._parameterNode.GetNodeReference(
+                    "GridPlanIndicatorNum" + str(i)
                 )
+                if gridPlanIndicator:
+                    slicer.mrmlScene.RemoveNode(gridPlanIndicator)
+
+        gridPlanPoints = self._parameterNode.GetNodeReference("GridPlanPoints")
+        if gridPlanPoints:
+            slicer.mrmlScene.RemoveNode(gridPlanPoints)
+            self._parameterNode.SetNodeReferenceID("GridPlanPoints", None)
 
     def onPushBackForward(self):
         change = float(self._parameterNode.GetParameter("ManualAdjustToolPosePos"))
