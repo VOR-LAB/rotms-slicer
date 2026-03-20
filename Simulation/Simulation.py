@@ -70,7 +70,7 @@ class SimulationWidget(ScriptedLoadableModuleWidget):
         self.formLayout.addRow("Coil placement", self.coilModeCombo)
         
         slicer.modules.tractographydisplay.widgetRepresentation().activateWindow()
-        self.loadExampleButton = qt.QPushButton("Load Example", self.collapsibleButton)
+        self.loadExampleButton = qt.QPushButton("Load Data and Predict", self.collapsibleButton)
         self.formLayout.addRow(self.loadExampleButton)
         self.loadExampleButton.clicked.connect(self.onLoadExampleClicked)
 
