@@ -1023,6 +1023,29 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
                         )
                     )
 
+    def processGetOrCreateGridPlanPointsNode(self):
+        gridPlanPoints = self._parameterNode.GetNodeReference("GridPlanPoints")
+        if not gridPlanPoints:
+            gridPlanPoints = slicer.mrmlScene.AddNewNodeByClass(
+                "vtkMRMLMarkupsFiducialNode", "GridPlanPoints"
+            )
+            self._parameterNode.SetNodeReferenceID("GridPlanPoints", gridPlanPoints.GetID())
+            gridPlanPoints.GetDisplayNode().SetSelectedColor(1, 1, 0)
+            gridPlanPoints.GetDisplayNode().SetTextScale(0.0)
+        return gridPlanPoints
+
+    def processGetGridPlanCoordinates(self):
+        coordinates = []
+        gridPlanPoints = self._parameterNode.GetNodeReference("GridPlanPoints")
+        if not gridPlanPoints:
+            return coordinates
+
+        for i in range(gridPlanPoints.GetNumberOfControlPoints()):
+            point = [0.0, 0.0, 0.0]
+            gridPlanPoints.GetNthControlPointPosition(i, point)
+            coordinates.append(point)
+        return coordinates
+
     def processVisualizeAndLogPlanGrid(self, coor):
 
         self.processClearPrevGridPlan()
@@ -1052,6 +1075,9 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
         if not inModel:
             slicer.util.errorDisplay("Please select a image model first!")
             return
+
+        gridPlanPoints = self.processGetOrCreateGridPlanPointsNode()
+        gridPlanPoints.RemoveAllMarkups()
 
         for i in coor:
             idx += 1
@@ -1102,6 +1128,7 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
                 )
 
             p[0], p[1], p[2] = cl_pIntSect[0], cl_pIntSect[1], cl_pIntSect[2]
+            gridPlanPoints.AddFiducial(p[0], p[1], p[2], "G" + str(idx))
 
             a, b, c = [0, 0, 0], [0, 0, 0], [0, 0, 0]
             cellObj.GetPoints().GetPoint(0, a)
