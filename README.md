@@ -40,7 +40,7 @@ A slicer script module for robot controlling commands.
 # TargetVisualization
 
 # Simulation
-TMS simulation and visualization module. This module is built upon the foundation of [SlicerTMS](https://github.com/lorifranke/SlicerTMS/tree/main), we thank for the authors for open sourcing their great work. The Simulation module extends SlicerTMS's capabilities to provide realtime TMS visualization and control functionality specifically tailored for robotic TMS applications.
+For corresponding documentation see [Simulation.md](/doc/Simulation.md)
 
 ## Features
 - TMS coil visualization
