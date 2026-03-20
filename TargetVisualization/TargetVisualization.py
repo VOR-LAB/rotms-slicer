@@ -142,6 +142,11 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.ui.pushStopTargetViz.connect(
             'clicked(bool)', self.onPushStopTargetViz)
 
+        self.ui.pushSavePlanAndRealPose.connect(
+            'clicked(bool)', self.onPushSavePlanAndRealPose)
+        self.ui.pushSaveContinuousPose.connect(
+            'clicked(bool)', self.onPushSaveContinuousPose)
+
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
 
@@ -236,11 +241,15 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.ui.pushStartTargetViz.enabled = False
             self.ui.pushStopTargetViz.toolTip = "Stop visualizing"
             self.ui.pushStopTargetViz.enabled = True
+            self.ui.pushSavePlanAndRealPose.toolTip = "Save data"
+            self.ui.pushSavePlanAndRealPose.enabled = True
         else:
             self.ui.pushStartTargetViz.toolTip = "Start visualizing"
             self.ui.pushStartTargetViz.enabled = True
             self.ui.pushStopTargetViz.toolTip = "Visualization not started"
             self.ui.pushStopTargetViz.enabled = False
+            self.ui.pushSavePlanAndRealPose.toolTip = "Start visualization first"
+            self.ui.pushSavePlanAndRealPose.enabled = False
 
         # All the GUI updates are done
         self._updatingGUIFromParameterNode = False
@@ -285,6 +294,20 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             return
         self.logic.processStopTargetViz()
         self._parameterNode.SetParameter("Visualizing", "false")
+
+    def onPushSavePlanAndRealPose(self):
+        msg = self.logic._commandsData["VISUALIZE_SAVE_PLANANDREAL_POSE"]
+        try:
+            self.logic._connections.utilSendCommand(msg)
+        except:
+            return
+    
+    def onPushSaveContinuousPose(self):
+        msg = self.logic._commandsData["VISUALIZE_SAVE_CONTINUOUS_POSE"]
+        try:
+            self.logic._connections.utilSendCommand(msg)
+        except:
+            return
 
 
 #

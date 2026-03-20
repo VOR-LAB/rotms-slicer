@@ -6,7 +6,9 @@
     
     "TargetVizCmd":
     {
-        "VISUALIZE_START": "start_visualizex",
-        "VISUALIZE_STOP": "stop_visualizexx"
+        "VISUALIZE_START":                  "start_visualizex",
+        "VISUALIZE_STOP":                   "stop_visualizexx",
+        "VISUALIZE_SAVE_PLANANDREAL_POSE":  "save_planandreal",
+        "VISUALIZE_SAVE_CONTINUOUS_POSE":   "save_continupose"
     }
 }

@@ -1,10 +1,10 @@
 {
-    "IP_RECEIVE_TARGETVIZ": "localhost",
-    "IP_SEND_TARGETVIZ": "localhost",
-    "PORT_RECEIVE_TARGETVIZ": 8069,
-    "PORT_SEND_TARGETVIZ": 8077,
-    "POSE_INDICATOR_MODEL": "toolpose.STL",
-    "IP_RECEIVE_NNBLC_TARGETVIZ": "localhost",
-    "PORT_RECEIVE_NNBLC_TARGETVIZ": 8079,
-    "EOM_TARGETVIZ": ";"
+    "IP_RECEIVE_TARGETVIZ":             "localhost",
+    "IP_SEND_TARGETVIZ":                "localhost",
+    "PORT_RECEIVE_TARGETVIZ":           8069,
+    "PORT_SEND_TARGETVIZ":              8077,
+    "POSE_INDICATOR_MODEL":             "toolpose.STL",
+    "IP_RECEIVE_NNBLC_TARGETVIZ":       "localhost",
+    "PORT_RECEIVE_NNBLC_TARGETVIZ":     8079,
+    "EOM_TARGETVIZ":                    ";"
 }

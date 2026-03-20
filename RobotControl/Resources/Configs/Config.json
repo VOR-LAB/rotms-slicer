@@ -1,7 +1,7 @@
 {
-    "IP_RECEIVE_RobotControl": "localhost",
-    "IP_SEND_RobotControl": "localhost",
-    "PORT_RECEIVE_RobotControl": 8063,
-    "PORT_SEND_RobotControl": 8072,
-    "EOM_RobotControl": ";"
+    "IP_RECEIVE_RobotControl":      "localhost",
+    "IP_SEND_RobotControl":         "localhost",
+    "PORT_RECEIVE_RobotControl":    8063,
+    "PORT_SEND_RobotControl":       8072,
+    "EOM_RobotControl":             ";"
 }

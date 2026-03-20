@@ -1,3 +1,8 @@
 __pycache__/
 .vscode/
 .vs
+
+*.DS_Store
+**.DS_Store
+.idea/
+.conda_backup/

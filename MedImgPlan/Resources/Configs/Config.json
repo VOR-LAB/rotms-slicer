@@ -1,13 +1,13 @@
 {
-    "IP_RECEIVE_MEDIMG": "localhost",
-    "IP_SEND_MEDIMG": "localhost",
-    "PORT_RECEIVE_MEDIMG": 8059,
-    "PORT_SEND_MEDIMG": 8057,
-    "POSE_INDICATOR_MODEL": "toolpose.STL",
-    "POSE_INDICATOR_NOTAIL_MODEL": "poseindicator.STL",
-    "POINT_INDICATOR_MODEL": "point.STL",
-    "PLANE_INDICATOR_MODEL": "plane.STL",
-    "IP_RECEIVE_NNBLC_MEDIMG": "localhost",
-    "PORT_RECEIVE_NNBLC_MEDIMG": 8083,
-    "EOM_MEDIMG": ";"
+    "IP_RECEIVE_MEDIMG":            "localhost",
+    "IP_SEND_MEDIMG":               "localhost",
+    "PORT_RECEIVE_MEDIMG":          8059,
+    "PORT_SEND_MEDIMG":             8057,
+    "POSE_INDICATOR_MODEL":         "toolpose.STL",
+    "POSE_INDICATOR_NOTAIL_MODEL":  "poseindicator.STL",
+    "POINT_INDICATOR_MODEL":        "point.STL",
+    "PLANE_INDICATOR_MODEL":        "plane.STL",
+    "IP_RECEIVE_NNBLC_MEDIMG":      "localhost",
+    "PORT_RECEIVE_NNBLC_MEDIMG":    8083,
+    "EOM_MEDIMG":                   ";"
 }

@@ -22,8 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-import socket
-import qt
+import socket, logging, qt, traceback, sys
 from MedImgPlanLib.UtilConnections import UtilConnections
 
 class UtilConnectionsWtNnBlcRcv(UtilConnections):
@@ -75,4 +74,5 @@ class UtilConnectionsWtNnBlcRcv(UtilConnections):
                 self.handleReceivedData()
                 qt.QTimer.singleShot(1, self.receiveTimerCallBack)
             except:
+                # logging.error(traceback.format_exc())
                 qt.QTimer.singleShot(1, self.receiveTimerCallBack)
