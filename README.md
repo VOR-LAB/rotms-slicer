@@ -42,11 +42,6 @@ A slicer script module for robot controlling commands.
 # Simulation
 For corresponding documentation see [Simulation.md](/doc/Simulation.md)
 
-## Features
-- TMS coil visualization
-- Simulation of TMS stimulation effects
-- Integration with robotic control systems
-- Real-time visualization updates
 
 
 # Installation

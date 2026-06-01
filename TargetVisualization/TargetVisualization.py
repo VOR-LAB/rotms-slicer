@@ -130,12 +130,18 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         # self.ui.selectorModel.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
         self.ui.sliderColorThresh.connect(
             "valueChanged(double)", self.updateParameterNodeFromGUI)
+        self.ui.comboMeshSelectorCoil.connect(
+            "currentIndexChanged(int)", self.updateParameterNodeFromGUI)
+        for name in self.logic._coilModelFiles.keys():
+            self.ui.comboMeshSelectorCoil.addItem(name)
 
         # Buttons
         self.ui.pushModuleRobCtrl.connect(
             'clicked(bool)', self.onPushModuleRobCtrl)
         self.ui.pushModuleMedImgPlan.connect(
             'clicked(bool)', self.onPushModuleMedImgPlan)
+        self.ui.pushModuleSimulation.connect(
+            'clicked(bool)', self.onPushModuleSimulation)
 
         self.ui.pushStartTargetViz.connect(
             'clicked(bool)', self.onPushStartTargetViz)
@@ -232,6 +238,11 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self._updatingGUIFromParameterNode = True
 
         # Update node selectors and sliders
+        coilName = self._parameterNode.GetParameter("CoilModelName")
+        if coilName:
+            idx = self.ui.comboMeshSelectorCoil.findText(coilName)
+            if idx >= 0:
+                self.ui.comboMeshSelectorCoil.setCurrentIndex(idx)
         self.ui.sliderColorThresh.value = float(
             self._parameterNode.GetParameter("ColorChangeThresh"))
 
@@ -268,6 +279,8 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
 
         self._parameterNode.SetParameter(
             "ColorChangeThresh", str(self.ui.sliderColorThresh.value))
+        self._parameterNode.SetParameter(
+            "CoilModelName", self.ui.comboMeshSelectorCoil.currentText)
 
         self._parameterNode.EndModify(wasModified)
 
@@ -276,6 +289,9 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
 
     def onPushModuleMedImgPlan(self):
         slicer.util.selectModule("MedImgPlan")
+
+    def onPushModuleSimulation(self):
+        slicer.util.selectModule("Simulation")
 
     def onPushStartTargetViz(self):
         msg = self.logic._commandsData["VISUALIZE_START"]
@@ -337,6 +353,26 @@ class TargetVisualizationLogic(ScriptedLoadableModuleLogic):
         with open(self._configPath+"CommandsConfig.json") as f:
             self._commandsData = (json.load(f))["TargetVizCmd"]
 
+        with open(self._configPath + "Config.json") as f:
+            configData = json.load(f)
+        self._coilModelFiles = configData.get("POSE_INDICATOR_MODELS", {})
+        self._coilModelNodes = {}
+
+    def _getCoilModelNode(self, name):
+        if name in self._coilModelNodes:
+            return self._coilModelNodes[name]
+        filename = self._coilModelFiles.get(name)
+        if not filename:
+            return None
+        filepath = self._configPath + filename
+        if not os.path.exists(filepath):
+            return None
+        node = slicer.util.loadModel(filepath)
+        node.SetName("coil_" + name)
+        node.GetDisplayNode().SetVisibility(False)
+        self._coilModelNodes[name] = node
+        return node
+
     def setDefaultParameters(self, parameterNode):
         """
         Initialize parameter node with default settings.
@@ -359,11 +395,25 @@ class TargetVisualizationLogic(ScriptedLoadableModuleLogic):
             self._parameterNode.SetNodeReferenceID(
                 "CurrentPoseTransform", transformNode.GetID())
 
-        if not self._parameterNode.GetNodeReference("CurrentPoseIndicator"):
-            with open(self._configPath+"Config.json") as f:
-                configData = json.load(f)
-            inputModel = slicer.util.loadModel(
-                self._configPath+configData["POSE_INDICATOR_MODEL"])
+        coilName = self._parameterNode.GetParameter("CoilModelName")
+        coilModelNode = self._getCoilModelNode(coilName) if coilName else None
+        currentIndicator = self._parameterNode.GetNodeReference("CurrentPoseIndicator")
+
+        if coilModelNode and currentIndicator and currentIndicator.GetID() != coilModelNode.GetID():
+            currentIndicator.GetDisplayNode().SetVisibility(False)
+            currentIndicator = None
+            self._parameterNode.SetNodeReferenceID("CurrentPoseIndicator", None)
+
+        if not currentIndicator:
+            if coilModelNode:
+                inputModel = coilModelNode
+            else:
+                with open(self._configPath+"Config.json") as f:
+                    configData = json.load(f)
+                inputModel = slicer.util.loadModel(
+                    self._configPath+configData["POSE_INDICATOR_MODEL"])
+            if inputModel:
+                inputModel.GetDisplayNode().SetVisibility(True)
             self._parameterNode.SetNodeReferenceID(
                 "CurrentPoseIndicator", inputModel.GetID())
 

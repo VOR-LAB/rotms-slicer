@@ -77,6 +77,26 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
         with open(self._configPath + "CommandsConfig.json") as f:
             self._commandsData = (json.load(f))["MegImgCmd"]
 
+        with open(self._configPath + "Config.json") as f:
+            configData = json.load(f)
+        self._coilModelFiles = configData.get("POSE_INDICATOR_MODELS", {})
+        self._coilModelNodes = {}
+
+    def _getCoilModelNode(self, name):
+        if name in self._coilModelNodes:
+            return self._coilModelNodes[name]
+        filename = self._coilModelFiles.get(name)
+        if not filename:
+            return None
+        filepath = self._configPath + filename
+        if not os.path.exists(filepath):
+            return None
+        node = slicer.util.loadModel(filepath)
+        node.SetName("coil_" + name)
+        node.GetDisplayNode().SetVisibility(False)
+        self._coilModelNodes[name] = node
+        return node
+
     def setDefaultParameters(self, parameterNode):
         """
         Initialize parameter node with default settings.
@@ -689,17 +709,33 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
 
         return closestPoint, matSkinClosest
 
-    def processToolPosePlanVisualizationInit(self):
-        if not self._parameterNode.GetNodeReference("TargetPoseIndicator"):
-            with open(self._configPath + "Config.json") as f:
-                configData = json.load(f)
-            inputModel = slicer.util.loadModel(
-                self._configPath + configData["POSE_INDICATOR_MODEL"]
-            )
+    def processToolPosePlanVisualizationInit(self, coilModelNode=None):
+        currentIndicator = self._parameterNode.GetNodeReference("TargetPoseIndicator")
+
+        if coilModelNode and currentIndicator and currentIndicator.GetID() != coilModelNode.GetID():
+            currentIndicator.GetDisplayNode().SetVisibility(False)
+            currentIndicator = None
+            self._parameterNode.SetNodeReferenceID("TargetPoseIndicator", None)
+
+        if not currentIndicator:
+            if coilModelNode:
+                inputModel = coilModelNode
+            else:
+                with open(self._configPath + "Config.json") as f:
+                    configData = json.load(f)
+                inputModel = slicer.util.loadModel(
+                    self._configPath + configData["POSE_INDICATOR_MODEL"]
+                )
             self._parameterNode.SetNodeReferenceID(
                 "TargetPoseIndicator", inputModel.GetID()
             )
-            inputModel.GetDisplayNode().SetColor(0, 1, 0)
+
+        inputModel = self._parameterNode.GetNodeReference("TargetPoseIndicator")
+        if inputModel:
+            if inputModel.GetDisplayNode():
+                inputModel.GetDisplayNode().SetVisibility(True)
+                inputModel.GetDisplayNode().SetColor(0, 1, 0)
+                inputModel.GetDisplayNode().SetOpacity(0.5)
         if not self._parameterNode.GetNodeReference("TargetPoseIndicatingLine"):
             lineNode = slicer.mrmlScene.AddNewNodeByClass(
                 "vtkMRMLMarkupsLineNode", "TargetPoseIndicatingLine"
@@ -709,7 +745,9 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
             )
 
     def processToolPosePlanVisualization(self):
-        self.processToolPosePlanVisualizationInit()
+        coilName = self._parameterNode.GetParameter("CoilModelName")
+        coilModelNode = self._getCoilModelNode(coilName) if coilName else None
+        self.processToolPosePlanVisualizationInit(coilModelNode)
         targetPoseIndicator = self._parameterNode.GetNodeReference(
             "TargetPoseIndicator"
         )
