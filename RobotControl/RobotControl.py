@@ -136,6 +136,8 @@ class RobotControlWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             'clicked(bool)', self.onPushModuleTargetViz)
         self.ui.pushModuleMedImgPlan.connect(
             'clicked(bool)', self.onPushModuleMedImgPlan)
+        self.ui.pushModuleSimulation.connect(
+            'clicked(bool)', self.onPushModuleSimulation)
 
         self.ui.pushSessionReinit.connect(
             'clicked(bool)', self.onPushSessionReinit)
@@ -338,6 +340,9 @@ class RobotControlWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onPushModuleTargetViz(self):
         slicer.util.selectModule("TargetVisualization")
+
+    def onPushModuleSimulation(self):
+        slicer.util.selectModule("Simulation")
 
     def onPushSessionReinit(self):
         msg = self.logic._commandsData["SESSION_REINIT"]

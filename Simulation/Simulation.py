@@ -48,6 +48,25 @@ class SimulationWidget(ScriptedLoadableModuleWidget):
         self.layout.addStretch(1)
 
     def setupButtons(self):
+        # Go to Other Modules
+        otherModulesButton = ctk.ctkCollapsibleButton()
+        otherModulesButton.text = "Go to Other Modules"
+        otherModulesButton.collapsed = True
+        self.layout.addWidget(otherModulesButton)
+        otherModulesLayout = qt.QGridLayout(otherModulesButton)
+
+        pushModuleRobCtrl = qt.QPushButton("Robot Ctrl")
+        pushModuleRobCtrl.clicked.connect(lambda: slicer.util.selectModule("RobotControl"))
+        otherModulesLayout.addWidget(pushModuleRobCtrl, 0, 0)
+
+        pushModuleMedImgPlan = qt.QPushButton("Med Img Plan")
+        pushModuleMedImgPlan.clicked.connect(lambda: slicer.util.selectModule("MedImgPlan"))
+        otherModulesLayout.addWidget(pushModuleMedImgPlan, 0, 1)
+
+        pushModuleTargetViz = qt.QPushButton("Target Viz")
+        pushModuleTargetViz.clicked.connect(lambda: slicer.util.selectModule("TargetVisualization"))
+        otherModulesLayout.addWidget(pushModuleTargetViz, 1, 0)
+
         self.collapsibleButton = ctk.ctkCollapsibleButton()
         self.collapsibleButton.text = "TMS Visualization"
         self.layout.addWidget(self.collapsibleButton)

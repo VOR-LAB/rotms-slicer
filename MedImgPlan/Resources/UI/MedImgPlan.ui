@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>402</width>
+    <width>351</width>
     <height>799</height>
    </rect>
   </property>
@@ -47,22 +47,66 @@
         </property>
        </widget>
       </item>
+      <item row="1" column="1">
+       <widget class="QPushButton" name="pushModuleSimulation">
+        <property name="text">
+         <string>Simulation</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
    <item>
     <widget class="ctkCollapsibleButton" name="collapModelSelect">
+     <property name="font">
+      <font>
+       <pointsize>9</pointsize>
+       <weight>50</weight>
+       <bold>false</bold>
+      </font>
+     </property>
      <property name="text">
       <string>Model Selection</string>
      </property>
      <property name="collapsed">
-      <bool>true</bool>
+      <bool>false</bool>
      </property>
      <layout class="QGridLayout" name="gridLayout_5">
+      <item row="2" column="1">
+       <widget class="qMRMLNodeComboBox" name="comboMeshSelectorBrain">
+        <property name="nodeTypes">
+         <stringlist>
+          <string>vtkMRMLModelNode</string>
+         </stringlist>
+        </property>
+       </widget>
+      </item>
       <item row="0" column="0">
        <widget class="QLabel" name="labelMeshSelectorSkin">
+        <property name="font">
+         <font>
+          <pointsize>10</pointsize>
+          <weight>50</weight>
+          <bold>false</bold>
+         </font>
+        </property>
         <property name="text">
-         <string>Skin Model:</string>
+         <string>Skin  Model:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelMeshSelectorBrain">
+        <property name="font">
+         <font>
+          <pointsize>10</pointsize>
+          <weight>50</weight>
+          <bold>false</bold>
+         </font>
+        </property>
+        <property name="text">
+         <string>Brain Model:</string>
         </property>
        </widget>
       </item>
@@ -75,19 +119,33 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="labelMeshSelectorBrain">
-        <property name="text">
-         <string>Brain Model:</string>
-        </property>
-       </widget>
+      <item row="3" column="1">
+       <widget class="QComboBox" name="comboMeshSelectorCoil"/>
       </item>
-      <item row="1" column="1">
-       <widget class="qMRMLNodeComboBox" name="comboMeshSelectorBrain">
-        <property name="nodeTypes">
-         <stringlist>
-          <string>vtkMRMLModelNode</string>
-         </stringlist>
+      <item row="3" column="0">
+       <widget class="QLabel" name="labelMeshSelectorCoil">
+        <property name="font">
+         <font>
+          <pointsize>10</pointsize>
+          <weight>50</weight>
+          <italic>false</italic>
+          <bold>false</bold>
+          <underline>false</underline>
+          <strikeout>false</strikeout>
+          <kerning>false</kerning>
+         </font>
+        </property>
+        <property name="autoFillBackground">
+         <bool>false</bool>
+        </property>
+        <property name="text">
+         <string>Coil  Model:</string>
+        </property>
+        <property name="textFormat">
+         <enum>Qt::AutoText</enum>
+        </property>
+        <property name="scaledContents">
+         <bool>false</bool>
         </property>
        </widget>
       </item>
@@ -98,6 +156,13 @@
     <widget class="ctkCollapsibleButton" name="collapRegistration">
      <property name="enabled">
       <bool>true</bool>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>9</pointsize>
+       <weight>50</weight>
+       <bold>false</bold>
+      </font>
      </property>
      <property name="acceptDrops">
       <bool>false</bool>
@@ -540,6 +605,11 @@
      <property name="enabled">
       <bool>true</bool>
      </property>
+     <property name="font">
+      <font>
+       <pointsize>9</pointsize>
+      </font>
+     </property>
      <property name="text">
       <string>Tool Pose Plan</string>
      </property>
@@ -924,11 +994,22 @@
         </property>
        </widget>
       </item>
+      <item row="14" column="1">
+       <widget class="QStackedWidget" name="stackedWidget">
+        <widget class="QWidget" name="page"/>
+        <widget class="QWidget" name="page_2"/>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
    <item>
     <widget class="ctkCollapsibleButton" name="collapDataInspect">
+     <property name="font">
+      <font>
+       <pointsize>9</pointsize>
+      </font>
+     </property>
      <property name="text">
       <string>MEP Visualization</string>
      </property>
@@ -949,7 +1030,7 @@
         </property>
         <property name="minimumSize">
          <size>
-          <width>136</width>
+          <width>128</width>
           <height>0</height>
          </size>
         </property>

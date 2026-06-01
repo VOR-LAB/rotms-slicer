@@ -3,7 +3,12 @@
     "IP_SEND_TARGETVIZ":                "localhost",
     "PORT_RECEIVE_TARGETVIZ":           8069,
     "PORT_SEND_TARGETVIZ":              8077,
-    "POSE_INDICATOR_MODEL":             "toolpose.STL",
+    "POSE_INDICATOR_MODEL":             "figure8_coil.stl",
+    "POSE_INDICATOR_MODELS": {
+        "Figure-8 Coil":  "figure8_coil.stl",
+        "Cone":       "toolpose.STL",
+        "Tiny Cone":  "toolpose_tiny.STL"
+    },
     "IP_RECEIVE_NNBLC_TARGETVIZ":       "localhost",
     "PORT_RECEIVE_NNBLC_TARGETVIZ":     8079,
     "EOM_TARGETVIZ":                    ";"

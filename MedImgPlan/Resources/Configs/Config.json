@@ -3,7 +3,12 @@
     "IP_SEND_MEDIMG":               "localhost",
     "PORT_RECEIVE_MEDIMG":          8059,
     "PORT_SEND_MEDIMG":             8057,
-    "POSE_INDICATOR_MODEL":         "toolpose.STL",
+    "POSE_INDICATOR_MODEL":         "figure8_coil.stl",
+    "POSE_INDICATOR_MODELS": {
+        "Figure-8 Coil":  "figure8_coil.stl",
+        "Cone":       "toolpose.STL",
+        "Tiny Cone":  "toolpose_tiny.STL"
+    },
     "POSE_INDICATOR_NOTAIL_MODEL":  "poseindicator.STL",
     "POINT_INDICATOR_MODEL":        "point.STL",
     "PLANE_INDICATOR_MODEL":        "plane.STL",
