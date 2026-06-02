@@ -112,18 +112,20 @@ class BullseyeCanvasWidget(qt.QWidget):
         self._relZ = 0.0
         self._pointerAngle = 0.0
         self._pointerProjLen = 0.0
+        self._zRotation = 0.0
 
         palette = self.palette
         palette.setColor(qt.QPalette.Window, qt.QColor(255, 255, 255))
         self.setPalette(palette)
         self.setAutoFillBackground(True)
 
-    def updateFromRelativeTransform(self, relX, relY, relZ, pointerAngle, pointerProjLen):
+    def updateFromRelativeTransform(self, relX, relY, relZ, pointerAngle, pointerProjLen, zRotation):
         self._relX = relX
         self._relY = relY
         self._relZ = relZ
         self._pointerAngle = pointerAngle
         self._pointerProjLen = pointerProjLen
+        self._zRotation = zRotation
         self.update()
 
     def paintEvent(self, event):
@@ -153,7 +155,7 @@ class BullseyeCanvasWidget(qt.QWidget):
         if self._pointerProjLen > 1e-6:
             painter.save()
             painter.translate(center, center)
-            painter.rotate(-math.degrees(self._pointerAngle))
+            painter.rotate(math.degrees(self._pointerAngle))
             ptrW = self._pixPointer.width() if self._pixPointer.width() > 0 else 1000
             ptrH = self._pixPointer.height() if self._pixPointer.height() > 0 else 1000
             ptrScale = canvasSize / float(ptrW)
@@ -161,12 +163,13 @@ class BullseyeCanvasWidget(qt.QWidget):
             painter.drawPixmap(int(-ptrW / 2), int(-ptrH / 2), self._pixPointer)
             painter.restore()
 
-        # Layer 3: current bullseye (translated by relX/relY, scaled by exp(-|relZ|))
+        # Layer 3: current bullseye (translated by relX/relY, rotated by zRotation, scaled by exp(-|relZ|))
         painter.save()
-        txPx = center + self._relX * mmToPx
-        tyPx = center - self._relY * mmToPx
-        zScale = math.exp(-abs(self._relZ))
+        txPx = center - self._relX * mmToPx
+        tyPx = center + self._relY * mmToPx
+        zScale = math.exp(-abs(self._relZ / 1000.0))
         painter.translate(txPx, tyPx)
+        painter.rotate(math.degrees(self._zRotation))
         curW = self._pixCurrent.width() if self._pixCurrent.width() > 0 else 1000
         curH = self._pixCurrent.height() if self._pixCurrent.height() > 0 else 1000
         curScale = imgScale * zScale
@@ -493,8 +496,10 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             pointerProjLen = math.sqrt(kx * kx + ky * ky)
             pointerAngle = math.atan2(ky, kx)
 
+        zRotation = math.atan2(r10, r00)
+
         self._bullseyeCanvas.updateFromRelativeTransform(
-            relX, relY, relZ, pointerAngle, pointerProjLen)
+            relX, relY, relZ, pointerAngle, pointerProjLen, zRotation)
 
     def onPushStopTargetViz(self):
         msg = self.logic._commandsData["VISUALIZE_STOP"]
