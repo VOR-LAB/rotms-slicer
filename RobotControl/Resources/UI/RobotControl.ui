@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>234</width>
+    <width>552</width>
     <height>835</height>
    </rect>
   </property>
@@ -20,14 +20,14 @@
       <item row="0" column="0">
        <widget class="QPushButton" name="pushModuleTargetViz">
         <property name="text">
-         <string>Target Viz</string>
+         <string>Target Visualization</string>
         </property>
        </widget>
       </item>
       <item row="0" column="1">
        <widget class="QPushButton" name="pushModuleMedImgPlan">
         <property name="text">
-         <string>Med Img Plan</string>
+         <string>Medical Image Planning</string>
         </property>
        </widget>
       </item>
