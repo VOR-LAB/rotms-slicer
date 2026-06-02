@@ -169,7 +169,7 @@ class BullseyeCanvasWidget(qt.QWidget):
         tyPx = center + self._relY * mmToPx
         zScale = math.exp(-abs(self._relZ / 1000.0))
         painter.translate(txPx, tyPx)
-        painter.rotate(math.degrees(self._zRotation))
+        painter.rotate(-math.degrees(self._zRotation))
         curW = self._pixCurrent.width() if self._pixCurrent.width() > 0 else 1000
         curH = self._pixCurrent.height() if self._pixCurrent.height() > 0 else 1000
         curScale = imgScale * zScale
