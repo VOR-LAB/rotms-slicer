@@ -20,14 +20,14 @@
       <item row="0" column="0">
        <widget class="QPushButton" name="pushModuleRobCtrl">
         <property name="text">
-         <string>Robot Ctrl</string>
+         <string>Robot Control</string>
         </property>
        </widget>
       </item>
       <item row="0" column="1">
        <widget class="QPushButton" name="pushModuleMedImgPlan">
         <property name="text">
-         <string>Med Img Plan</string>
+         <string>Medical Image Planning</string>
         </property>
        </widget>
       </item>
