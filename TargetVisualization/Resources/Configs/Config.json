@@ -9,6 +9,9 @@
         "Cone":       "toolpose.STL",
         "Tiny Cone":  "toolpose_tiny.STL"
     },
+    "BULLSEYE_MARKER_TARGET":           "bullseye_target.png",
+    "BULLSEYE_MARKER_CURRENT":          "bullseye_current.png",
+    "ORIENTATION_POINTER":              "orientation_pointer.png",
     "IP_RECEIVE_NNBLC_TARGETVIZ":       "localhost",
     "PORT_RECEIVE_NNBLC_TARGETVIZ":     8079,
     "EOM_TARGETVIZ":                    ";"

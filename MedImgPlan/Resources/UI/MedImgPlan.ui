@@ -23,20 +23,20 @@
       <string>Go to Other Modules</string>
      </property>
      <property name="collapsed">
-      <bool>true</bool>
+      <bool>false</bool>
      </property>
      <layout class="QGridLayout" name="gridLayout_3">
       <item row="0" column="0">
        <widget class="QPushButton" name="pushModuleRobCtrl">
         <property name="text">
-         <string>Robot Ctrl</string>
+         <string>Robot Control</string>
         </property>
        </widget>
       </item>
       <item row="0" column="1">
        <widget class="QPushButton" name="pushModuleTargetViz">
         <property name="text">
-         <string>Target Viz</string>
+         <string>Target Visualization</string>
         </property>
        </widget>
       </item>
@@ -1036,6 +1036,7 @@
         </property>
         <property name="font">
          <font>
+          <pointsize>9</pointsize>
           <weight>50</weight>
           <italic>false</italic>
           <bold>false</bold>

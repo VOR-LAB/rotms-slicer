@@ -25,6 +25,7 @@ SOFTWARE.
 import os
 import json
 import logging
+import math
 
 import vtk
 import qt
@@ -79,6 +80,23 @@ def appStartUpPostAction():
 #
 
 
+BULLSEYE_LAYOUT_ID = 5001
+BULLSEYE_LAYOUT_XML = """
+<layout type="horizontal" split="true">
+  <item splitSize="700">
+    <view class="vtkMRMLViewNode" singletontag="1">
+      <property name="viewlabel" action="default">1</property>
+    </view>
+  </item>
+  <item splitSize="300">
+    <view class="vtkMRMLViewNode" singletontag="Bullseye">
+      <property name="viewlabel" action="default">B</property>
+    </view>
+  </item>
+</layout>
+"""
+
+
 class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -94,6 +112,8 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.logic = None
         self._parameterNode = None
         self._updatingGUIFromParameterNode = False
+        self._previousLayoutId = None
+        self._restrictedDisplayNodes = []
 
     def setup(self):
         """
@@ -153,6 +173,11 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.ui.pushSaveContinuousPose.connect(
             'clicked(bool)', self.onPushSaveContinuousPose)
 
+        # Register the bullseye layout
+        layoutManager = slicer.app.layoutManager()
+        layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(
+            BULLSEYE_LAYOUT_ID, BULLSEYE_LAYOUT_XML)
+
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
 
@@ -167,13 +192,75 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         """
         Called each time the user opens this module.
         """
+        layoutManager = slicer.app.layoutManager()
+        self._previousLayoutId = layoutManager.layout
+        layoutManager.setLayout(BULLSEYE_LAYOUT_ID)
+
+        self._bullseyeViewNode = slicer.mrmlScene.GetSingletonNode("Bullseye", "vtkMRMLViewNode")
+        self._mainViewNode = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+        if self._bullseyeViewNode:
+            self._bullseyeViewNode.SetBackgroundColor(1, 1, 1)
+            self._bullseyeViewNode.SetBackgroundColor2(1, 1, 1)
+            self._bullseyeViewNode.SetBoxVisible(False)
+            self._bullseyeViewNode.SetAxisLabelsVisible(False)
+            self._bullseyeViewNode.SetRenderMode(slicer.vtkMRMLViewNode.Orthographic)
+
+        self._restrictedDisplayNodes = []
+        if self._bullseyeViewNode and self._mainViewNode:
+            displayableNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLDisplayableNode")
+            for i in range(displayableNodes.GetNumberOfItems()):
+                self._restrictNodeFromBullseye(displayableNodes.GetItemAsObject(i))
+
+        self.addObserver(slicer.mrmlScene, slicer.mrmlScene.NodeAddedEvent, self._onNodeAdded)
+
         # Make sure parameter node exists and observed
         self.initializeParameterNode()
+
+    def _restrictNodeFromBullseye(self, node):
+        if not self._bullseyeViewNode or not self._mainViewNode:
+            return
+        if not node.IsA("vtkMRMLDisplayableNode"):
+            return
+        bullseyeMarkerRefs = {"BullseyeMarkerTarget", "BullseyeMarkerCurrent", "OrientationPointer"}
+        if node.GetName() in bullseyeMarkerRefs:
+            return
+        mainViewID = self._mainViewNode.GetID()
+        bullseyeViewID = self._bullseyeViewNode.GetID()
+        for j in range(node.GetNumberOfDisplayNodes()):
+            displayNode = node.GetNthDisplayNode(j)
+            if not displayNode:
+                continue
+            if displayNode.GetNumberOfViewNodeIDs() == 0:
+                displayNode.AddViewNodeID(mainViewID)
+                self._restrictedDisplayNodes.append(displayNode)
+            elif displayNode.IsViewNodeIDPresent(bullseyeViewID):
+                displayNode.RemoveViewNodeID(bullseyeViewID)
+                self._restrictedDisplayNodes.append((displayNode, bullseyeViewID))
+
+    @vtk.calldata_type(vtk.VTK_OBJECT)
+    def _onNodeAdded(self, caller, event, calldata):
+        node = calldata
+        if node and node.IsA("vtkMRMLDisplayableNode"):
+            qt.QTimer.singleShot(0, lambda: self._restrictNodeFromBullseye(node))
 
     def exit(self):
         """
         Called each time the user opens a different module.
         """
+        self.removeObserver(slicer.mrmlScene, slicer.mrmlScene.NodeAddedEvent, self._onNodeAdded)
+
+        for item in self._restrictedDisplayNodes:
+            if isinstance(item, tuple):
+                displayNode, viewID = item
+                displayNode.AddViewNodeID(viewID)
+            else:
+                item.RemoveAllViewNodeIDs()
+        self._restrictedDisplayNodes = []
+
+        if self._previousLayoutId is not None:
+            slicer.app.layoutManager().setLayout(self._previousLayoutId)
+            self._previousLayoutId = None
+
         # Do not react to parameter node changes (GUI wlil be updated when the user enters into the module)
         self.removeObserver(
             self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
@@ -301,6 +388,102 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             return
         self.logic.processStartTargetViz()
         self._parameterNode.SetParameter("Visualizing", "true")
+        self._alignBullseyeCamera()
+        self._startOrientationPointerUpdates()
+
+    def _startOrientationPointerUpdates(self):
+        currentTransformNode = self._parameterNode.GetNodeReference("CurrentPoseTransform")
+        if currentTransformNode:
+            self.addObserver(currentTransformNode, vtk.vtkCommand.ModifiedEvent,
+                             self._updateOrientationPointer)
+            self._updateOrientationPointer()
+
+    def _stopOrientationPointerUpdates(self):
+        currentTransformNode = self._parameterNode.GetNodeReference("CurrentPoseTransform")
+        if currentTransformNode:
+            self.removeObserver(currentTransformNode, vtk.vtkCommand.ModifiedEvent,
+                                self._updateOrientationPointer)
+
+    def _updateOrientationPointer(self, caller=None, event=None):
+        targetTransformNode = self.logic._connections._transformNodeTargetPoseSingleton
+        currentTransformNode = self._parameterNode.GetNodeReference("CurrentPoseTransform")
+        relTransformNode = self._parameterNode.GetNodeReference("OrientationPointerTransform")
+        if not targetTransformNode or not currentTransformNode or not relTransformNode:
+            return
+
+        matTarget = targetTransformNode.GetMatrixTransformToParent()
+        matCurrent = currentTransformNode.GetMatrixTransformToParent()
+
+        targetInv = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Invert(matTarget, targetInv)
+        rel = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Multiply4x4(targetInv, matCurrent, rel)
+
+        # Extract 3x3 rotation from relative transform
+        r00, r01, r02 = rel.GetElement(0,0), rel.GetElement(0,1), rel.GetElement(0,2)
+        r10, r11, r12 = rel.GetElement(1,0), rel.GetElement(1,1), rel.GetElement(1,2)
+        r20, r21, r22 = rel.GetElement(2,0), rel.GetElement(2,1), rel.GetElement(2,2)
+
+        # Axis-angle decomposition
+        trace = r00 + r11 + r22
+        cosTheta = max(-1.0, min(1.0, (trace - 1.0) / 2.0))
+        theta = math.acos(cosTheta)
+        sinTheta = math.sin(theta)
+
+        affine = vtk.vtkMatrix4x4()
+        if abs(sinTheta) < 1e-6:
+            affine.SetElement(1, 1, 0.0)
+            relTransformNode.SetMatrixTransformToParent(affine)
+            return
+
+        # Rotation axis (unit vector)
+        kx = (r21 - r12) / (2.0 * sinTheta)
+        ky = (r02 - r20) / (2.0 * sinTheta)
+
+        # Project axis onto target XY plane
+        projLen = math.sqrt(kx * kx + ky * ky)
+        angle = math.atan2(ky, kx)
+
+        # Affine = Rz(angle) * ScaleY(projLen)
+        ca, sa = math.cos(angle), math.sin(angle)
+        affine.SetElement(0, 0, ca)
+        affine.SetElement(0, 1, -sa * projLen)
+        affine.SetElement(1, 0, sa)
+        affine.SetElement(1, 1, ca * projLen)
+
+        relTransformNode.SetMatrixTransformToParent(affine)
+
+    def _alignBullseyeCamera(self):
+        transformNode = self.logic._connections._transformNodeTargetPoseSingleton
+        if not transformNode:
+            return
+
+        mat = transformNode.GetMatrixTransformToParent()
+        px, py, pz = mat.GetElement(0, 3), mat.GetElement(1, 3), mat.GetElement(2, 3)
+        zx, zy, zz = mat.GetElement(0, 2), mat.GetElement(1, 2), mat.GetElement(2, 2)
+        yx, yy, yz = mat.GetElement(0, 1), mat.GetElement(1, 1), mat.GetElement(2, 1)
+
+        dist = 50.0
+        camPos = [px + zx * dist, py + zy * dist, pz + zz * dist]
+        focalPt = [px, py, pz]
+        viewUp = [-yx, -yy, -yz]
+
+        layoutManager = slicer.app.layoutManager()
+        for i in range(layoutManager.threeDViewCount):
+            widget = layoutManager.threeDWidget(i)
+            if widget.mrmlViewNode().GetSingletonTag() == "Bullseye":
+                cameraNode = slicer.modules.cameras.logic().GetViewActiveCameraNode(widget.mrmlViewNode())
+                if not cameraNode:
+                    return
+                camera = cameraNode.GetCamera()
+                camera.SetParallelProjection(True)
+                camera.SetPosition(camPos)
+                camera.SetFocalPoint(focalPt)
+                camera.SetViewUp(viewUp)
+                camera.SetParallelScale(50.0)
+                camera.SetClippingRange(0.1, dist * 4)
+                widget.threeDView().forceRender()
+                return
 
     def onPushStopTargetViz(self):
         msg = self.logic._commandsData["VISUALIZE_STOP"]
@@ -308,6 +491,7 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.logic._connections.utilSendCommand(msg)
         except:
             return
+        self._stopOrientationPointerUpdates()
         self.logic.processStopTargetViz()
         self._parameterNode.SetParameter("Visualizing", "false")
 
@@ -436,8 +620,132 @@ class TargetVisualizationLogic(ScriptedLoadableModuleLogic):
         self._connections._colorchangethresh = float(
             self._parameterNode.GetParameter("ColorChangeThresh"))
 
+        targetTransform = self._connections._transformNodeTargetPoseSingleton
+        currentTransform = self._parameterNode.GetNodeReference("CurrentPoseTransform")
+
+        self._loadBullseyeMarker("BULLSEYE_MARKER_TARGET", "BullseyeMarkerTarget", targetTransform)
+        self._loadBullseyeMarker("BULLSEYE_MARKER_CURRENT", "BullseyeMarkerCurrent", currentTransform)
+        self._loadOrientationPointer(targetTransform)
+
         self._connections._flag_receiving_nnblc = True
         self._connections.receiveTimerCallBack()
+
+    def _loadOrientationPointer(self, targetTransform):
+        if not self._parameterNode.GetNodeReference("OrientationPointerTransform"):
+            relTransform = slicer.vtkMRMLTransformNode()
+            relTransform.SetName("OrientationPointerTransform")
+            slicer.mrmlScene.AddNode(relTransform)
+            if targetTransform:
+                relTransform.SetAndObserveTransformNodeID(targetTransform.GetID())
+            self._parameterNode.SetNodeReferenceID(
+                "OrientationPointerTransform", relTransform.GetID())
+
+        relTransformNode = self._parameterNode.GetNodeReference("OrientationPointerTransform")
+
+        existing = self._parameterNode.GetNodeReference("OrientationPointer")
+        if existing:
+            existing.GetDisplayNode().SetVisibility(True)
+            existing.SetAndObserveTransformNodeID(relTransformNode.GetID())
+            return
+
+        with open(self._configPath + "Config.json") as f:
+            configData = json.load(f)
+        pointerFile = configData.get("ORIENTATION_POINTER")
+        if not pointerFile:
+            return
+        pointerPath = self._configPath + pointerFile
+        if not os.path.exists(pointerPath):
+            return
+
+        reader = vtk.vtkPNGReader()
+        reader.SetFileName(pointerPath)
+        reader.Update()
+
+        planeSource = vtk.vtkPlaneSource()
+        halfSize = 25.0
+        planeSource.SetOrigin(-halfSize, -halfSize, 0)
+        planeSource.SetPoint1(halfSize, -halfSize, 0)
+        planeSource.SetPoint2(-halfSize, halfSize, 0)
+        planeSource.Update()
+
+        textureMap = vtk.vtkTextureMapToPlane()
+        textureMap.SetInputConnection(planeSource.GetOutputPort())
+        textureMap.Update()
+
+        modelNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", "OrientationPointer")
+        modelNode.SetAndObservePolyData(textureMap.GetOutput())
+        modelNode.CreateDefaultDisplayNodes()
+
+        textureImageNode = slicer.mrmlScene.AddNewNodeByClass(
+            "vtkMRMLVectorVolumeNode", "OrientationPointerTexture")
+        textureImageNode.SetAndObserveImageData(reader.GetOutput())
+
+        displayNode = modelNode.GetDisplayNode()
+        displayNode.SetTextureImageDataConnection(textureImageNode.GetImageDataConnection())
+        displayNode.SetBackfaceCulling(False)
+        displayNode.SetLighting(False)
+
+        modelNode.SetAndObserveTransformNodeID(relTransformNode.GetID())
+
+        bullseyeViewNode = slicer.mrmlScene.GetSingletonNode("Bullseye", "vtkMRMLViewNode")
+        if bullseyeViewNode:
+            displayNode.AddViewNodeID(bullseyeViewNode.GetID())
+
+        self._parameterNode.SetNodeReferenceID("OrientationPointer", modelNode.GetID())
+
+    def _loadBullseyeMarker(self, configKey, nodeRefName, transformNode):
+        existing = self._parameterNode.GetNodeReference(nodeRefName)
+        if existing:
+            existing.GetDisplayNode().SetVisibility(True)
+            if transformNode:
+                existing.SetAndObserveTransformNodeID(transformNode.GetID())
+            return
+
+        with open(self._configPath + "Config.json") as f:
+            configData = json.load(f)
+        markerFile = configData.get(configKey)
+        if not markerFile:
+            return
+        markerPath = self._configPath + markerFile
+        if not os.path.exists(markerPath):
+            return
+
+        reader = vtk.vtkPNGReader()
+        reader.SetFileName(markerPath)
+        reader.Update()
+
+        planeSource = vtk.vtkPlaneSource()
+        halfSize = 25.0
+        planeSource.SetOrigin(-halfSize, -halfSize, 0)
+        planeSource.SetPoint1(halfSize, -halfSize, 0)
+        planeSource.SetPoint2(-halfSize, halfSize, 0)
+        planeSource.Update()
+
+        textureMap = vtk.vtkTextureMapToPlane()
+        textureMap.SetInputConnection(planeSource.GetOutputPort())
+        textureMap.Update()
+
+        modelNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", nodeRefName)
+        modelNode.SetAndObservePolyData(textureMap.GetOutput())
+        modelNode.CreateDefaultDisplayNodes()
+
+        textureImageNode = slicer.mrmlScene.AddNewNodeByClass(
+            "vtkMRMLVectorVolumeNode", nodeRefName + "Texture")
+        textureImageNode.SetAndObserveImageData(reader.GetOutput())
+
+        displayNode = modelNode.GetDisplayNode()
+        displayNode.SetTextureImageDataConnection(textureImageNode.GetImageDataConnection())
+        displayNode.SetBackfaceCulling(False)
+        displayNode.SetLighting(False)
+
+        if transformNode:
+            modelNode.SetAndObserveTransformNodeID(transformNode.GetID())
+
+        bullseyeViewNode = slicer.mrmlScene.GetSingletonNode("Bullseye", "vtkMRMLViewNode")
+        if bullseyeViewNode:
+            displayNode.AddViewNodeID(bullseyeViewNode.GetID())
+
+        self._parameterNode.SetNodeReferenceID(nodeRefName, modelNode.GetID())
 
     def processStopTargetViz(self):
 
@@ -482,6 +790,9 @@ class TargetVizConnections(UtilConnectionsWtNnBlcRcv):
             num.append(float(i))
         p = num[0:3]
         mat = quat2mat(num[3:])
+        p = [62, 12.5, 59.04] # for testing
+        # mat = [[-0.59, 0.26, 0.77],[-0.18,-0.96,0.19],[0.79,-0.03,0.61]]
+        # print("Received pose: position(mm) = {}, orientation(quat) = {}".format(p, num[3:]))
         return mat, p
 
     def utilPoseMsgCallback(self, mat, p):
