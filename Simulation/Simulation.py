@@ -230,7 +230,11 @@ class SimulationWidget(ScriptedLoadableModuleWidget):
         self.example_path = resolved_path
         self.sendExamplePathToServer(resolved_path)
         overrides = self._collectOverrides()
-        self.loader = L.Loader.loadExample(resolved_path, overrides)
+        try:
+            self.loader = L.Loader.loadExample(resolved_path, overrides)
+        except FileNotFoundError as exc:
+            slicer.util.errorDisplay(str(exc))
+            return
         if self.loader:
             self.loader.setCoilMode(self._coilModeKey(self.coilModeCombo.currentText))
 

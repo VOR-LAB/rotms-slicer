@@ -302,6 +302,11 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         """
         Called each time the user opens a different module.
         """
+        # Stop bullseye updates first so the TransformModifiedEvent observer is
+        # unregistered; otherwise it stays active after leaving the module and
+        # accumulates duplicates across enter/exit cycles.
+        self._stopBullseyeUpdates()
+
         if self._bullseyeCanvas and self._bullseyeThreeDWidget:
             self._bullseyeCanvas.setParent(None)
             self._bullseyeCanvas.deleteLater()
@@ -612,8 +617,11 @@ class TargetVisualizationLogic(ScriptedLoadableModuleLogic):
                     configData = json.load(f)
                 inputModel = slicer.util.loadModel(
                     self._configPath+configData["POSE_INDICATOR_MODEL"])
-            if inputModel:
-                inputModel.GetDisplayNode().SetVisibility(True)
+            if not inputModel:
+                slicer.util.errorDisplay(
+                    "Failed to load the pose indicator model. Cannot start target visualization.")
+                return
+            inputModel.GetDisplayNode().SetVisibility(True)
             self._parameterNode.SetNodeReferenceID(
                 "CurrentPoseIndicator", inputModel.GetID())
 

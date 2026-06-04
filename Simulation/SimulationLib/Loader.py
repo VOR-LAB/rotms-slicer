@@ -22,7 +22,9 @@ class Loader:
         elif os.path.isfile(brainModelFile_vtk):
             brainModelFile = brainModelFile_vtk
         else:
-            return
+            raise FileNotFoundError(
+                f"Gray matter model not found in {self.data_directory} "
+                f"(expected '{self._graymatter_file}.stl' or '{self._graymatter_file}.vtk').")
         self._graymatter_file = os.path.basename(brainModelFile)
 
         self._coil_file = 'coil.stl'
