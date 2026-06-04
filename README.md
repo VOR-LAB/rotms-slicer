@@ -2,7 +2,7 @@
 
 This extension enables planning and visualization for Robotic Transcranial Magnetic Stimulation (RoTMS) procedures in 3D Slicer.
 
-![plan](https://github.com/bingogome/rotms-slicer/blob/main/preopplan.png)
+![plan](./preopplan.png)
 
 ## Overview
 
@@ -23,6 +23,10 @@ The RoTMS Slicer extension consists of three main modules:
 3. **TargetVisualization**: Real-time visualization of target and actual tool positions
    - Visualize planned vs. actual positions
    - Capture and save pose data
+
+4. **Simulation**: Simulate the electric field distribution based on coil pose
+
+Detailed documentation for each module can be found in [doc](doc/).
 
 ## Installation
 
@@ -93,5 +97,12 @@ For detailed instructions on each module, refer to the documentation or tooltips
 This software is released under the MIT License. See the LICENSE file for details.
 
 ## Acknowledgements
-
-@article{liu2025image, title={An Image-Guided Robotic System for Transcranial Magnetic Stimulation: System Development and Experimental Evaluation}, author={Liu, Yihao and Zhang, Jiaming and Ai, Letian and Tian, Jing and Sefati, Shahriar and Liu, Huan and Martin-Gomez, Alejandro and Kheradmand, Amir and Armand, Mehran}, journal={IEEE Robotics and Automation Letters}, year={2025}, publisher={IEEE} }
+```bibtex
+@article{liu2025image, 
+title={An Image-Guided Robotic System for Transcranial Magnetic Stimulation: System Development and Experimental Evaluation}, 
+author={Liu, Yihao and Zhang, Jiaming and Ai, Letian and Tian, Jing and Sefati, Shahriar and Liu, Huan and Martin-Gomez, Alejandro and Kheradmand, Amir and Armand, Mehran}, 
+journal={IEEE Robotics and Automation Letters}, 
+year={2025}, 
+publisher={IEEE} 
+}
+```
