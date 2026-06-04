@@ -69,6 +69,11 @@ class MedImgPlanWidget(MedImgPlanWidgetBase):
         self.ui.comboMeshSelectorBrain.connect(
             "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI
         )
+        self.ui.comboMeshSelectorCoil.connect(
+            "currentIndexChanged(int)", self.updateParameterNodeFromGUI
+        )
+        for name in self.logic._coilModelFiles.keys():
+            self.ui.comboMeshSelectorCoil.addItem(name)
 
         self.ui.checkPlanBrain.connect("toggled(bool)", self.updateParameterNodeFromGUI)
 
@@ -122,6 +127,7 @@ class MedImgPlanWidget(MedImgPlanWidgetBase):
         self.ui.pushModuleFreeSurfer.connect(
             "clicked(bool)", self.onPushModuleFreeSurfer
         )
+        self.ui.pushModuleSimulation.connect("clicked(bool)", self.onPushModuleSimulation)
 
         # Registration error estimation
         self.ui.pushStartTRE.connect("clicked(bool)", self.onPushStartTRE)
@@ -219,6 +225,11 @@ class MedImgPlanWidget(MedImgPlanWidgetBase):
         self.ui.comboMeshSelectorBrain.setCurrentNode(
             self._parameterNode.GetNodeReference("InputMeshBrain")
         )
+        coilName = self._parameterNode.GetParameter("CoilModelName")
+        if coilName:
+            idx = self.ui.comboMeshSelectorCoil.findText(coilName)
+            if idx >= 0:
+                self.ui.comboMeshSelectorCoil.setCurrentIndex(idx)
         self.ui.sliderColorThresh.value = float(
             self._parameterNode.GetParameter("ColorChangeThresh")
         )
@@ -319,6 +330,9 @@ class MedImgPlanWidget(MedImgPlanWidgetBase):
             "InputMeshBrain", self.ui.comboMeshSelectorBrain.currentNodeID
         )
         self._parameterNode.SetParameter(
+            "CoilModelName", self.ui.comboMeshSelectorCoil.currentText
+        )
+        self._parameterNode.SetParameter(
             "ColorChangeThresh", str(self.ui.sliderColorThresh.value)
         )
         self._parameterNode.SetParameter(
@@ -387,6 +401,9 @@ class MedImgPlanWidget(MedImgPlanWidgetBase):
 
     def onPushModuleFreeSurfer(self):
         slicer.util.selectModule("FreeSurferImporter")
+
+    def onPushModuleSimulation(self):
+        slicer.util.selectModule("Simulation")
 
     def onPushStartTRE(self):
         msg = self.logic._commandsData["START_TRE_CALCULATION_START"]
@@ -531,16 +548,22 @@ class MedImgPlanWidget(MedImgPlanWidgetBase):
                 float(self._parameterNode.GetParameter("GridPlanIndicatorNumPrev"))
             )
             for i in range(prevnum):
-                slicer.mrmlScene.RemoveNode(
-                    self._parameterNode.GetNodeReference(
-                        "GridPlanTransformNum" + str(i)
-                    )
+                gridPlanTransform = self._parameterNode.GetNodeReference(
+                    "GridPlanTransformNum" + str(i)
                 )
-                slicer.mrmlScene.RemoveNode(
-                    self._parameterNode.GetNodeReference(
-                        "GridPlanIndicatorNum" + str(i)
-                    )
+                if gridPlanTransform:
+                    slicer.mrmlScene.RemoveNode(gridPlanTransform)
+
+                gridPlanIndicator = self._parameterNode.GetNodeReference(
+                    "GridPlanIndicatorNum" + str(i)
                 )
+                if gridPlanIndicator:
+                    slicer.mrmlScene.RemoveNode(gridPlanIndicator)
+
+        gridPlanPoints = self._parameterNode.GetNodeReference("GridPlanPoints")
+        if gridPlanPoints:
+            slicer.mrmlScene.RemoveNode(gridPlanPoints)
+            self._parameterNode.SetNodeReferenceID("GridPlanPoints", None)
 
     def onPushBackForward(self):
         change = float(self._parameterNode.GetParameter("ManualAdjustToolPosePos"))

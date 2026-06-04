@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>395</width>
+    <width>369</width>
     <height>620</height>
    </rect>
   </property>
@@ -20,14 +20,21 @@
       <item row="0" column="0">
        <widget class="QPushButton" name="pushModuleRobCtrl">
         <property name="text">
-         <string>Robot Ctrl</string>
+         <string>Robot Control</string>
         </property>
        </widget>
       </item>
       <item row="0" column="1">
        <widget class="QPushButton" name="pushModuleMedImgPlan">
         <property name="text">
-         <string>Med Img Plan</string>
+         <string>Medical Image Planning</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QPushButton" name="pushModuleSimulation">
+        <property name="text">
+         <string>Simulation</string>
         </property>
        </widget>
       </item>
@@ -40,15 +47,31 @@
       <string>Target Visualization</string>
      </property>
      <layout class="QGridLayout" name="gridLayout">
-      <item row="3" column="0">
-       <widget class="QPushButton" name="pushStopTargetViz">
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelColorThresh">
         <property name="text">
-         <string>Stop Target Visualization</string>
+         <string>Color Change Thresh: (mm)</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
+      <item row="0" column="1">
+       <widget class="QComboBox" name="comboMeshSelectorCoil"/>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelMeshSelectorCoil">
+        <property name="text">
+         <string>Coil Model:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
        <widget class="ctkSliderWidget" name="sliderColorThresh">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="minimum">
          <double>1.000000000000000</double>
         </property>
@@ -60,17 +83,29 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
+      <item row="3" column="0" colspan="2">
        <widget class="QPushButton" name="pushStartTargetViz">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="text">
          <string>Start Target Visualization</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelColorThresh">
+      <item row="5" column="0" colspan="2">
+       <widget class="QPushButton" name="pushStopTargetViz">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="text">
-         <string>Color Change Thresh: (mm)</string>
+         <string>Stop Target Visualization</string>
         </property>
        </widget>
       </item>

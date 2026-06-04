@@ -25,6 +25,7 @@ SOFTWARE.
 import os
 import json
 import logging
+import math
 
 import vtk
 import qt
@@ -79,6 +80,110 @@ def appStartUpPostAction():
 #
 
 
+BULLSEYE_LAYOUT_ID = 5001
+BULLSEYE_LAYOUT_XML = """
+<layout type="horizontal" split="true">
+  <item splitSize="700">
+    <view class="vtkMRMLViewNode" singletontag="1">
+      <property name="viewlabel" action="default">1</property>
+    </view>
+  </item>
+  <item splitSize="300">
+    <view class="vtkMRMLViewNode" singletontag="Bullseye">
+      <property name="viewlabel" action="default">B</property>
+    </view>
+  </item>
+</layout>
+"""
+
+
+class BullseyeCanvasWidget(qt.QWidget):
+
+    def __init__(self, configPath, parent=None):
+        super().__init__(parent)
+        with open(configPath + "Config.json") as f:
+            configData = json.load(f)
+        self._pixTarget = qt.QPixmap(configPath + configData.get("BULLSEYE_MARKER_TARGET", ""))
+        self._pixCurrent = qt.QPixmap(configPath + configData.get("BULLSEYE_MARKER_CURRENT", ""))
+        self._pixPointer = qt.QPixmap(configPath + configData.get("ORIENTATION_POINTER", ""))
+
+        self._relX = 0.0
+        self._relY = 0.0
+        self._relZ = 0.0
+        self._pointerAngle = 0.0
+        self._pointerProjLen = 0.0
+        self._zRotation = 0.0
+
+        palette = self.palette
+        palette.setColor(qt.QPalette.Window, qt.QColor(255, 255, 255))
+        self.setPalette(palette)
+        self.setAutoFillBackground(True)
+
+    def updateFromRelativeTransform(self, relX, relY, relZ, pointerAngle, pointerProjLen, zRotation):
+        self._relX = relX
+        self._relY = relY
+        self._relZ = relZ
+        self._pointerAngle = pointerAngle
+        self._pointerProjLen = pointerProjLen
+        self._zRotation = zRotation
+        self.update()
+
+    def paintEvent(self, event):
+        painter = qt.QPainter(self)
+        painter.setRenderHint(qt.QPainter.Antialiasing, True)
+
+        canvasSize = min(self.width, self.height)
+        offsetX = (self.width - canvasSize) / 2.0
+        offsetY = (self.height - canvasSize) / 2.0
+        center = canvasSize / 2.0
+
+        imgW = self._pixTarget.width() if self._pixTarget.width() > 0 else 1000
+        imgH = self._pixTarget.height() if self._pixTarget.height() > 0 else 1000
+        imgScale = canvasSize / float(imgW)
+        mmToPx = canvasSize / 50.0
+
+        painter.save()
+        painter.translate(offsetX, offsetY)
+
+        # Layer 1: target bullseye (static, centered)
+        painter.save()
+        painter.scale(imgScale, imgScale)
+        painter.drawPixmap(0, 0, self._pixTarget)
+        painter.restore()
+
+        # Layer 2: orientation pointer (centered, rotated + height-scaled)
+        if self._pointerProjLen > 1e-6:
+            painter.save()
+            painter.translate(center, center)
+            painter.rotate(math.degrees(self._pointerAngle))
+            ptrW = self._pixPointer.width() if self._pixPointer.width() > 0 else 1000
+            ptrH = self._pixPointer.height() if self._pixPointer.height() > 0 else 1000
+            ptrScale = canvasSize / float(ptrW)
+            painter.scale(ptrScale, ptrScale * self._pointerProjLen)
+            painter.drawPixmap(int(-ptrW / 2), int(-ptrH / 2), self._pixPointer)
+            painter.restore()
+
+        # Layer 3: current bullseye (translated by relX/relY, rotated by zRotation, scaled by exp(-|relZ|))
+        painter.save()
+        txPx = center - self._relX * mmToPx
+        tyPx = center + self._relY * mmToPx
+        zScale = math.exp(-abs(self._relZ / 1000.0))
+        painter.translate(txPx, tyPx)
+        painter.rotate(-math.degrees(self._zRotation))
+        curW = self._pixCurrent.width() if self._pixCurrent.width() > 0 else 1000
+        curH = self._pixCurrent.height() if self._pixCurrent.height() > 0 else 1000
+        curScale = imgScale * zScale
+        painter.scale(curScale, curScale)
+        painter.drawPixmap(int(-curW / 2), int(-curH / 2), self._pixCurrent)
+        painter.restore()
+
+        painter.restore()
+        painter.end()
+
+    def resizeEvent(self, event):
+        self.update()
+
+
 class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -94,6 +199,9 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.logic = None
         self._parameterNode = None
         self._updatingGUIFromParameterNode = False
+        self._previousLayoutId = None
+        self._bullseyeCanvas = None
+        self._bullseyeThreeDWidget = None
 
     def setup(self):
         """
@@ -130,12 +238,18 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         # self.ui.selectorModel.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
         self.ui.sliderColorThresh.connect(
             "valueChanged(double)", self.updateParameterNodeFromGUI)
+        self.ui.comboMeshSelectorCoil.connect(
+            "currentIndexChanged(int)", self.updateParameterNodeFromGUI)
+        for name in self.logic._coilModelFiles.keys():
+            self.ui.comboMeshSelectorCoil.addItem(name)
 
         # Buttons
         self.ui.pushModuleRobCtrl.connect(
             'clicked(bool)', self.onPushModuleRobCtrl)
         self.ui.pushModuleMedImgPlan.connect(
             'clicked(bool)', self.onPushModuleMedImgPlan)
+        self.ui.pushModuleSimulation.connect(
+            'clicked(bool)', self.onPushModuleSimulation)
 
         self.ui.pushStartTargetViz.connect(
             'clicked(bool)', self.onPushStartTargetViz)
@@ -146,6 +260,11 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             'clicked(bool)', self.onPushSavePlanAndRealPose)
         self.ui.pushSaveContinuousPose.connect(
             'clicked(bool)', self.onPushSaveContinuousPose)
+
+        # Register the bullseye layout
+        layoutManager = slicer.app.layoutManager()
+        layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(
+            BULLSEYE_LAYOUT_ID, BULLSEYE_LAYOUT_XML)
 
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
@@ -161,6 +280,21 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         """
         Called each time the user opens this module.
         """
+        layoutManager = slicer.app.layoutManager()
+        self._previousLayoutId = layoutManager.layout
+        layoutManager.setLayout(BULLSEYE_LAYOUT_ID)
+
+        for i in range(layoutManager.threeDViewCount):
+            widget = layoutManager.threeDWidget(i)
+            if widget.mrmlViewNode().GetSingletonTag() == "Bullseye":
+                self._bullseyeThreeDWidget = widget
+                widget.threeDView().hide()
+                widget.threeDController().hide()
+                self._bullseyeCanvas = BullseyeCanvasWidget(
+                    self.logic._configPath, widget)
+                widget.layout().addWidget(self._bullseyeCanvas)
+                break
+
         # Make sure parameter node exists and observed
         self.initializeParameterNode()
 
@@ -168,6 +302,18 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         """
         Called each time the user opens a different module.
         """
+        if self._bullseyeCanvas and self._bullseyeThreeDWidget:
+            self._bullseyeCanvas.setParent(None)
+            self._bullseyeCanvas.deleteLater()
+            self._bullseyeCanvas = None
+            self._bullseyeThreeDWidget.threeDView().show()
+            self._bullseyeThreeDWidget.threeDController().show()
+            self._bullseyeThreeDWidget = None
+
+        if self._previousLayoutId is not None:
+            slicer.app.layoutManager().setLayout(self._previousLayoutId)
+            self._previousLayoutId = None
+
         # Do not react to parameter node changes (GUI wlil be updated when the user enters into the module)
         self.removeObserver(
             self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
@@ -232,6 +378,11 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self._updatingGUIFromParameterNode = True
 
         # Update node selectors and sliders
+        coilName = self._parameterNode.GetParameter("CoilModelName")
+        if coilName:
+            idx = self.ui.comboMeshSelectorCoil.findText(coilName)
+            if idx >= 0:
+                self.ui.comboMeshSelectorCoil.setCurrentIndex(idx)
         self.ui.sliderColorThresh.value = float(
             self._parameterNode.GetParameter("ColorChangeThresh"))
 
@@ -268,6 +419,8 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
 
         self._parameterNode.SetParameter(
             "ColorChangeThresh", str(self.ui.sliderColorThresh.value))
+        self._parameterNode.SetParameter(
+            "CoilModelName", self.ui.comboMeshSelectorCoil.currentText)
 
         self._parameterNode.EndModify(wasModified)
 
@@ -277,6 +430,9 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
     def onPushModuleMedImgPlan(self):
         slicer.util.selectModule("MedImgPlan")
 
+    def onPushModuleSimulation(self):
+        slicer.util.selectModule("Simulation")
+
     def onPushStartTargetViz(self):
         msg = self.logic._commandsData["VISUALIZE_START"]
         try:
@@ -285,6 +441,65 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             return
         self.logic.processStartTargetViz()
         self._parameterNode.SetParameter("Visualizing", "true")
+        self._startBullseyeUpdates()
+
+    def _startBullseyeUpdates(self):
+        currentTransformNode = self._parameterNode.GetNodeReference("CurrentPoseTransform")
+        if currentTransformNode:
+            self.addObserver(currentTransformNode,
+                             slicer.vtkMRMLTransformNode.TransformModifiedEvent,
+                             self._updateBullseyeCanvas)
+            self._updateBullseyeCanvas()
+
+    def _stopBullseyeUpdates(self):
+        currentTransformNode = self._parameterNode.GetNodeReference("CurrentPoseTransform")
+        if currentTransformNode:
+            self.removeObserver(currentTransformNode,
+                                slicer.vtkMRMLTransformNode.TransformModifiedEvent,
+                                self._updateBullseyeCanvas)
+
+    def _updateBullseyeCanvas(self, caller=None, event=None):
+        if not self._bullseyeCanvas:
+            return
+        targetTransformNode = self.logic._connections._transformNodeTargetPoseSingleton
+        currentTransformNode = self._parameterNode.GetNodeReference("CurrentPoseTransform")
+        if not targetTransformNode or not currentTransformNode:
+            return
+
+        matTarget = targetTransformNode.GetMatrixTransformToParent()
+        matCurrent = currentTransformNode.GetMatrixTransformToParent()
+
+        targetInv = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Invert(matTarget, targetInv)
+        rel = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Multiply4x4(targetInv, matCurrent, rel)
+
+        relX = rel.GetElement(0, 3)
+        relY = rel.GetElement(1, 3)
+        relZ = rel.GetElement(2, 3)
+
+        r00, r01, r02 = rel.GetElement(0,0), rel.GetElement(0,1), rel.GetElement(0,2)
+        r10, r11, r12 = rel.GetElement(1,0), rel.GetElement(1,1), rel.GetElement(1,2)
+        r20, r21, r22 = rel.GetElement(2,0), rel.GetElement(2,1), rel.GetElement(2,2)
+
+        trace = r00 + r11 + r22
+        cosTheta = max(-1.0, min(1.0, (trace - 1.0) / 2.0))
+        theta = math.acos(cosTheta)
+        sinTheta = math.sin(theta)
+
+        pointerAngle = 0.0
+        pointerProjLen = 0.0
+
+        if abs(sinTheta) > 1e-6:
+            kx = (r21 - r12) / (2.0 * sinTheta)
+            ky = (r02 - r20) / (2.0 * sinTheta)
+            pointerProjLen = math.sqrt(kx * kx + ky * ky)
+            pointerAngle = math.atan2(ky, kx)
+
+        zRotation = math.atan2(r10, r00)
+
+        self._bullseyeCanvas.updateFromRelativeTransform(
+            relX, relY, relZ, pointerAngle, pointerProjLen, zRotation)
 
     def onPushStopTargetViz(self):
         msg = self.logic._commandsData["VISUALIZE_STOP"]
@@ -292,6 +507,7 @@ class TargetVisualizationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.logic._connections.utilSendCommand(msg)
         except:
             return
+        self._stopBullseyeUpdates()
         self.logic.processStopTargetViz()
         self._parameterNode.SetParameter("Visualizing", "false")
 
@@ -337,6 +553,26 @@ class TargetVisualizationLogic(ScriptedLoadableModuleLogic):
         with open(self._configPath+"CommandsConfig.json") as f:
             self._commandsData = (json.load(f))["TargetVizCmd"]
 
+        with open(self._configPath + "Config.json") as f:
+            configData = json.load(f)
+        self._coilModelFiles = configData.get("POSE_INDICATOR_MODELS", {})
+        self._coilModelNodes = {}
+
+    def _getCoilModelNode(self, name):
+        if name in self._coilModelNodes:
+            return self._coilModelNodes[name]
+        filename = self._coilModelFiles.get(name)
+        if not filename:
+            return None
+        filepath = self._configPath + filename
+        if not os.path.exists(filepath):
+            return None
+        node = slicer.util.loadModel(filepath)
+        node.SetName("coil_" + name)
+        node.GetDisplayNode().SetVisibility(False)
+        self._coilModelNodes[name] = node
+        return node
+
     def setDefaultParameters(self, parameterNode):
         """
         Initialize parameter node with default settings.
@@ -359,11 +595,25 @@ class TargetVisualizationLogic(ScriptedLoadableModuleLogic):
             self._parameterNode.SetNodeReferenceID(
                 "CurrentPoseTransform", transformNode.GetID())
 
-        if not self._parameterNode.GetNodeReference("CurrentPoseIndicator"):
-            with open(self._configPath+"Config.json") as f:
-                configData = json.load(f)
-            inputModel = slicer.util.loadModel(
-                self._configPath+configData["POSE_INDICATOR_MODEL"])
+        coilName = self._parameterNode.GetParameter("CoilModelName")
+        coilModelNode = self._getCoilModelNode(coilName) if coilName else None
+        currentIndicator = self._parameterNode.GetNodeReference("CurrentPoseIndicator")
+
+        if coilModelNode and currentIndicator and currentIndicator.GetID() != coilModelNode.GetID():
+            currentIndicator.GetDisplayNode().SetVisibility(False)
+            currentIndicator = None
+            self._parameterNode.SetNodeReferenceID("CurrentPoseIndicator", None)
+
+        if not currentIndicator:
+            if coilModelNode:
+                inputModel = coilModelNode
+            else:
+                with open(self._configPath+"Config.json") as f:
+                    configData = json.load(f)
+                inputModel = slicer.util.loadModel(
+                    self._configPath+configData["POSE_INDICATOR_MODEL"])
+            if inputModel:
+                inputModel.GetDisplayNode().SetVisibility(True)
             self._parameterNode.SetNodeReferenceID(
                 "CurrentPoseIndicator", inputModel.GetID())
 

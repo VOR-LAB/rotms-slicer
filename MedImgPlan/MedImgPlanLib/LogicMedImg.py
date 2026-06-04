@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-import os, json, logging, math, random, yaml, numpy
+import os, json, logging, math, random, yaml, numpy, datetime
 import vtk, qt, ctk, slicer
 
 from slicer.ScriptedLoadableModule import *
@@ -76,6 +76,26 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
 
         with open(self._configPath + "CommandsConfig.json") as f:
             self._commandsData = (json.load(f))["MegImgCmd"]
+
+        with open(self._configPath + "Config.json") as f:
+            configData = json.load(f)
+        self._coilModelFiles = configData.get("POSE_INDICATOR_MODELS", {})
+        self._coilModelNodes = {}
+
+    def _getCoilModelNode(self, name):
+        if name in self._coilModelNodes:
+            return self._coilModelNodes[name]
+        filename = self._coilModelFiles.get(name)
+        if not filename:
+            return None
+        filepath = self._configPath + filename
+        if not os.path.exists(filepath):
+            return None
+        node = slicer.util.loadModel(filepath)
+        node.SetName("coil_" + name)
+        node.GetDisplayNode().SetVisibility(False)
+        self._coilModelNodes[name] = node
+        return node
 
     def setDefaultParameters(self, parameterNode):
         """
@@ -689,17 +709,33 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
 
         return closestPoint, matSkinClosest
 
-    def processToolPosePlanVisualizationInit(self):
-        if not self._parameterNode.GetNodeReference("TargetPoseIndicator"):
-            with open(self._configPath + "Config.json") as f:
-                configData = json.load(f)
-            inputModel = slicer.util.loadModel(
-                self._configPath + configData["POSE_INDICATOR_MODEL"]
-            )
+    def processToolPosePlanVisualizationInit(self, coilModelNode=None):
+        currentIndicator = self._parameterNode.GetNodeReference("TargetPoseIndicator")
+
+        if coilModelNode and currentIndicator and currentIndicator.GetID() != coilModelNode.GetID():
+            currentIndicator.GetDisplayNode().SetVisibility(False)
+            currentIndicator = None
+            self._parameterNode.SetNodeReferenceID("TargetPoseIndicator", None)
+
+        if not currentIndicator:
+            if coilModelNode:
+                inputModel = coilModelNode
+            else:
+                with open(self._configPath + "Config.json") as f:
+                    configData = json.load(f)
+                inputModel = slicer.util.loadModel(
+                    self._configPath + configData["POSE_INDICATOR_MODEL"]
+                )
             self._parameterNode.SetNodeReferenceID(
                 "TargetPoseIndicator", inputModel.GetID()
             )
-            inputModel.GetDisplayNode().SetColor(0, 1, 0)
+
+        inputModel = self._parameterNode.GetNodeReference("TargetPoseIndicator")
+        if inputModel:
+            if inputModel.GetDisplayNode():
+                inputModel.GetDisplayNode().SetVisibility(True)
+                inputModel.GetDisplayNode().SetColor(0, 1, 0)
+                inputModel.GetDisplayNode().SetOpacity(0.5)
         if not self._parameterNode.GetNodeReference("TargetPoseIndicatingLine"):
             lineNode = slicer.mrmlScene.AddNewNodeByClass(
                 "vtkMRMLMarkupsLineNode", "TargetPoseIndicatingLine"
@@ -709,7 +745,9 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
             )
 
     def processToolPosePlanVisualization(self):
-        self.processToolPosePlanVisualizationInit()
+        coilName = self._parameterNode.GetParameter("CoilModelName")
+        coilModelNode = self._getCoilModelNode(coilName) if coilName else None
+        self.processToolPosePlanVisualizationInit(coilModelNode)
         targetPoseIndicator = self._parameterNode.GetNodeReference(
             "TargetPoseIndicator"
         )
@@ -1023,6 +1061,29 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
                         )
                     )
 
+    def processGetOrCreateGridPlanPointsNode(self):
+        gridPlanPoints = self._parameterNode.GetNodeReference("GridPlanPoints")
+        if not gridPlanPoints:
+            gridPlanPoints = slicer.mrmlScene.AddNewNodeByClass(
+                "vtkMRMLMarkupsFiducialNode", "GridPlanPoints"
+            )
+            self._parameterNode.SetNodeReferenceID("GridPlanPoints", gridPlanPoints.GetID())
+            gridPlanPoints.GetDisplayNode().SetSelectedColor(1, 1, 0)
+            gridPlanPoints.GetDisplayNode().SetTextScale(0.0)
+        return gridPlanPoints
+
+    def processGetGridPlanCoordinates(self):
+        coordinates = []
+        gridPlanPoints = self._parameterNode.GetNodeReference("GridPlanPoints")
+        if not gridPlanPoints:
+            return coordinates
+
+        for i in range(gridPlanPoints.GetNumberOfControlPoints()):
+            point = [0.0, 0.0, 0.0]
+            gridPlanPoints.GetNthControlPointPosition(i, point)
+            coordinates.append(point)
+        return coordinates
+
     def processVisualizeAndLogPlanGrid(self, coor):
 
         self.processClearPrevGridPlan()
@@ -1052,6 +1113,9 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
         if not inModel:
             slicer.util.errorDisplay("Please select a image model first!")
             return
+
+        gridPlanPoints = self.processGetOrCreateGridPlanPointsNode()
+        gridPlanPoints.RemoveAllMarkups()
 
         for i in coor:
             idx += 1
@@ -1102,6 +1166,7 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
                 )
 
             p[0], p[1], p[2] = cl_pIntSect[0], cl_pIntSect[1], cl_pIntSect[2]
+            gridPlanPoints.AddFiducial(p[0], p[1], p[2], "G" + str(idx))
 
             a, b, c = [0, 0, 0], [0, 0, 0], [0, 0, 0]
             cellObj.GetPoints().GetPoint(0, a)
@@ -1298,6 +1363,13 @@ class MedImgPlanLogic(ScriptedLoadableModuleLogic):
         # print the range of distances
         scalars = computeScalarFromDistance(distances, mep, MAX_MEP=1.0)
         scalar_values = poly_data.GetPointData().GetScalars()
+
+        now = datetime.datetime.now()
+        filename = f"{now.year}.{now.month}.{now.day}.{now.hour}.{now.minute}.{now.second}.json"
+        # get the current working directory
+        path = os.getcwd()
+        with open(os.path.join(path, filename), 'w') as fp:
+            fp.write(f"Main coordinates: {intersection_points.GetPoint(0) }  and MEP value: {mep} \n")
 
         if not scalar_values:
             scalar_values = vtk.vtkDoubleArray()
