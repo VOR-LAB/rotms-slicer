@@ -47,6 +47,16 @@
       <string>Target Visualization</string>
      </property>
      <layout class="QGridLayout" name="gridLayout">
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelColorThresh">
+        <property name="text">
+         <string>Color Change Thresh: (mm)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="comboMeshSelectorCoil"/>
+      </item>
       <item row="0" column="0">
        <widget class="QLabel" name="labelMeshSelectorCoil">
         <property name="text">
@@ -54,17 +64,7 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <widget class="QComboBox" name="comboMeshSelectorCoil"/>
-      </item>
-      <item row="1" column="0" colspan="2">
-       <widget class="QLabel" name="labelColorThresh">
-        <property name="text">
-         <string>Color Change Thresh: (mm)</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0" colspan="2">
+      <item row="2" column="1">
        <widget class="ctkSliderWidget" name="sliderColorThresh">
         <property name="minimum">
          <double>1.000000000000000</double>
@@ -77,17 +77,17 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0" colspan="2">
-       <widget class="QPushButton" name="pushStartTargetViz">
-        <property name="text">
-         <string>Start Target Visualization</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0" colspan="2">
+      <item row="3" column="1">
        <widget class="QPushButton" name="pushStopTargetViz">
         <property name="text">
          <string>Stop Target Visualization</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QPushButton" name="pushStartTargetViz">
+        <property name="text">
+         <string>Start Target Visualization</string>
         </property>
        </widget>
       </item>
