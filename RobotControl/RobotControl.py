@@ -113,6 +113,9 @@ class RobotControlWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # in batch mode, without a graphical user interface.
         self.logic = RobotControlLogic(self.resourcePath('Configs/'))
 
+        # Populate the Control Mode dropdown from Config.json (CONTROL_MODE)
+        self.populateControlModeCombo()
+
         # Connections
 
         # These connections ensure that we update parameter node when scene is closed
@@ -173,6 +176,18 @@ class RobotControlWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
+
+    def populateControlModeCombo(self):
+        """
+        Fill the Control Mode dropdown with the options defined under
+        CONTROL_MODE in Config.json. The option's numeric value is stored as
+        item data so it can be used when sending control commands.
+        """
+        controlModes = self.logic.getControlModes()
+        self.ui.comboControlMode.clear()
+        # Order the options by their configured numeric value for a stable display
+        for name, value in sorted(controlModes.items(), key=lambda kv: kv[1]):
+            self.ui.comboControlMode.addItem(name, value)
 
     def cleanup(self):
         """
@@ -460,6 +475,10 @@ class RobotControlLogic(ScriptedLoadableModuleLogic):
 
         with open(self._configPath+"CommandsConfig.json") as f:
             self._commandsData = (json.load(f))["RobCtrlCmd"]
+
+    def getControlModes(self):
+        """Return the CONTROL_MODE mapping (name -> value) from Config.json."""
+        return self._connections._configData.get("CONTROL_MODE", {})
 
     def setDefaultParameters(self, parameterNode):
         """

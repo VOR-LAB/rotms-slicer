@@ -4,9 +4,10 @@ set(MODULE_NAME Simulation)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  Loader.py
-  Mapper.py
-  Rendering.py
+  ${MODULE_NAME}Lib/__init__.py
+  ${MODULE_NAME}Lib/Loader.py
+  ${MODULE_NAME}Lib/Rendering.py
+  ${MODULE_NAME}Lib/Mapper.py
   )
 
 set(MODULE_PYTHON_RESOURCES

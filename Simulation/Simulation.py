@@ -2,7 +2,8 @@ import os
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import sys
-import Loader as L
+from SimulationLib import Loader as L
+# import Loader as L
 
 
 class Simulation(ScriptedLoadableModule):

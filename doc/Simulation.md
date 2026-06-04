@@ -7,6 +7,32 @@ TMS simulation and visualization module. The Simulation module provides realtime
 - Data logging and export for analysis
 - Free coil placement and controlled coil placement
 
+## Installation
+### Slicer Side
+It's the same as the installation process described in the [README.md](README.md) file. 
+
+### Server Side
+#### Conda Virtual Environment
+
+1. Create a new conda environment using the provided `environment.yaml` file:
+```bash
+conda env create -f doc/environment.yaml
+```
+2. Activate the environment:
+```bash
+conda activate rotms-sim
+```
+
+#### Running the Server
+1. Navigate to the server directory:
+```bash
+cd NeuralNet
+```
+2. Run the server script:
+```bash
+python server.py
+```
+
 ## How to
 1. Load the mrb data file that contains the skin, brain and target points
 2. Go to Simulation module, in Data Directory section, browse to pick the folder that contains the conductivity file, the magfield file, and the coil cad model file. 
@@ -14,13 +40,12 @@ TMS simulation and visualization module. The Simulation module provides realtime
 ```bash
 python3 server.py
 ```
-4. In Simulation module, click "Load Example" button to pass the data path to the server, and the server will run as soon as it receives a new incoming magfield data.
+4. In Simulation module, click "Load Data and Predict" button to pass the data path to the server, and the server will run as soon as it receives a new incoming magfield data.
 
 
 
 ## ToDo
 - [] Integrate with ROS for hosting the server.py code to run the deep learning model on the backend
-- [] Add jump shortcut to the rest modules (MedImgPlan and RobotControl) for better user experience
 
 
 

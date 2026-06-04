@@ -3,5 +3,10 @@
     "IP_SEND_RobotControl":         "localhost",
     "PORT_RECEIVE_RobotControl":    8063,
     "PORT_SEND_RobotControl":       8072,
+    "CONTROL_MODE":{
+        "Position": 0,
+        "Joint Impedance": 1,
+        "Cartesian Impedance": 2
+    },
     "EOM_RobotControl":             ";"
 }
