@@ -81,7 +81,7 @@ class Mapper:
         # # transposed of the rotation matrix
         RotMat_transp = np.array([[matrixFromFid.GetElement(0,0), matrixFromFid.GetElement(1,0),  matrixFromFid.GetElement(2,0)],
                                    [matrixFromFid.GetElement(0,1), matrixFromFid.GetElement(1,1),  matrixFromFid.GetElement(2,1)],
-                                   [matrixFromFid.GetElement(0,1), matrixFromFid.GetElement(1,1),  matrixFromFid.GetElement(2,1)]])
+                                   [matrixFromFid.GetElement(0,2), matrixFromFid.GetElement(1,2),  matrixFromFid.GetElement(2,2)]])
         # # rotate the vector field
         DataOut_np_rot = np.matmul(DataOut_np, RotMat_transp)
         # # reshape the numpy array
@@ -98,13 +98,6 @@ class Mapper:
         # Queue the IGTL push so the UI thread is not blocked by large sends
         qt.QTimer.singleShot(0, lambda n=loader.magfieldNode: loader.IGTLNode.PushNode(n))
 
-
-        try:
-            slicer.modules.SimulationWidget.requestPrediction()
-        except Exception as e:
-            print("Could not send PREDICT:", e)
-
-
         # time in seconds:
         if time:
             stop = timeit.default_timer()
@@ -114,7 +107,6 @@ class Mapper:
 
     @staticmethod
     def mapElectricfieldToMesh(scalarNode, brainNode, coilMatrix):
-        print("mapElectricfieldToMesh executed. THIS IS NEW CODE")
         # get the scalar range from image scalars
         rng = scalarNode.GetImageData().GetScalarRange()
         fMin = rng[0]
@@ -337,7 +329,6 @@ class Mapper:
 
     @staticmethod
     def modifyIncomingImage(loader):
-        print("modifyIncomingImage executes")
         matrix_ref = vtk.vtkMatrix4x4()
         loader.conductivityNode.GetIJKToRASMatrix(matrix_ref)
         loader.pyigtlNode.ApplyTransformMatrix(matrix_ref)

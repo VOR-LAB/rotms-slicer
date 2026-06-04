@@ -2,7 +2,8 @@ import os
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import sys
-import Loader as L
+from SimulationLib import Loader as L
+# import Loader as L
 
 
 class Simulation(ScriptedLoadableModule):
@@ -94,73 +95,6 @@ class SimulationWidget(ScriptedLoadableModuleWidget):
         self.loadExampleButton = qt.QPushButton("Load Data and Predict", self.collapsibleButton)
         self.formLayout.addRow(self.loadExampleButton)
         self.loadExampleButton.clicked.connect(self.onLoadExampleClicked)
-
-        assetOverridesBox = qt.QGroupBox("Asset overrides", self.collapsibleButton)
-        assetLayout = qt.QFormLayout(assetOverridesBox)
-        self.formLayout.addRow(assetOverridesBox)
-
-        self.coilSelector = slicer.qMRMLNodeComboBox(assetOverridesBox)
-        self.coilSelector.nodeTypes = ["vtkMRMLModelNode"]
-        self.coilSelector.noneEnabled = True
-        self.coilSelector.addEnabled = False
-        self.coilSelector.removeEnabled = False
-        self.coilSelector.renameEnabled = False
-        self.coilSelector.showHidden = False
-        self.coilSelector.setMRMLScene(slicer.mrmlScene)
-        assetLayout.addRow("Coil model", self.coilSelector)
-        self.coilSelector.currentNodeChanged.connect(lambda node: self._updateParameterNodeReference('coilModelNodeID', node))
-
-        self.skinSelector = slicer.qMRMLNodeComboBox(assetOverridesBox)
-        self.skinSelector.nodeTypes = ["vtkMRMLModelNode"]
-        self.skinSelector.noneEnabled = True
-        self.skinSelector.addEnabled = False
-        self.skinSelector.removeEnabled = False
-        self.skinSelector.renameEnabled = False
-        self.skinSelector.showHidden = False
-        self.skinSelector.setMRMLScene(slicer.mrmlScene)
-        assetLayout.addRow("Skin model", self.skinSelector)
-        self.skinSelector.currentNodeChanged.connect(lambda node: self._updateParameterNodeReference('skinModelNodeID', node))
-
-        self.magnormSelector = slicer.qMRMLNodeComboBox(assetOverridesBox)
-        self.magnormSelector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        self.magnormSelector.noneEnabled = True
-        self.magnormSelector.addEnabled = False
-        self.magnormSelector.removeEnabled = False
-        self.magnormSelector.renameEnabled = False
-        self.magnormSelector.showHidden = False
-        self.magnormSelector.setMRMLScene(slicer.mrmlScene)
-        assetLayout.addRow("MagNorm volume", self.magnormSelector)
-        self.magnormSelector.currentNodeChanged.connect(lambda node: self._updateParameterNodeReference('magnormNodeID', node))
-
-        self.magfieldSelector = slicer.qMRMLNodeComboBox(assetOverridesBox)
-        self.magfieldSelector.nodeTypes = ["vtkMRMLTransformNode"]
-        self.magfieldSelector.noneEnabled = True
-        self.magfieldSelector.addEnabled = False
-        self.magfieldSelector.removeEnabled = False
-        self.magfieldSelector.renameEnabled = False
-        self.magfieldSelector.showHidden = False
-        self.magfieldSelector.setMRMLScene(slicer.mrmlScene)
-        assetLayout.addRow("MagField transform", self.magfieldSelector)
-        self.magfieldSelector.currentNodeChanged.connect(lambda node: self._updateParameterNodeReference('magfieldNodeID', node))
-
-        self.conductivitySelector = slicer.qMRMLNodeComboBox(assetOverridesBox)
-        self.conductivitySelector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        self.conductivitySelector.noneEnabled = True
-        self.conductivitySelector.addEnabled = False
-        self.conductivitySelector.removeEnabled = False
-        self.conductivitySelector.renameEnabled = False
-        self.conductivitySelector.showHidden = False
-        self.conductivitySelector.setMRMLScene(slicer.mrmlScene)
-        assetLayout.addRow("Conductivity volume", self.conductivitySelector)
-        self.conductivitySelector.currentNodeChanged.connect(lambda node: self._updateParameterNodeReference('conductivityNodeID', node))
-
-        self.coilScaleSpinBox = qt.QDoubleSpinBox(assetOverridesBox)
-        self.coilScaleSpinBox.setDecimals(2)
-        self.coilScaleSpinBox.setMinimum(0.1)
-        self.coilScaleSpinBox.setMaximum(100.0)
-        self.coilScaleSpinBox.setValue(3.0)
-        assetLayout.addRow("Coil scale", self.coilScaleSpinBox)
-        self.coilScaleSpinBox.valueChanged.connect(self._onCoilScaleChanged)
 
         assetOverridesBox = qt.QGroupBox("Asset overrides", self.collapsibleButton)
         assetLayout = qt.QFormLayout(assetOverridesBox)

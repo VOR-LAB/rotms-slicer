@@ -3,9 +3,10 @@ import vtk, qt, ctk, slicer, sitkUtils
 import SimpleITK as sitk
 # from slicer.ScriptedLoadableModule import *
 import numpy as np
-import Rendering as ren
-import Mapper as M
-
+from SimulationLib import Rendering as ren
+from SimulationLib import Mapper as M
+# import Rendering as ren
+# import Mapper as M
 
 class Loader:
 
