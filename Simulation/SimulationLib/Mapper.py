@@ -1,5 +1,6 @@
 import os
 import json
+from unittest import loader
 import vtk, qt, ctk, slicer, sitkUtils
 from slicer.ScriptedLoadableModule import *
 import numpy as np
@@ -7,6 +8,8 @@ from vtk.util.numpy_support import vtk_to_numpy
 from vtk.util.numpy_support import numpy_to_vtk
 import SimpleITK as sitk
 import timeit
+
+_efield_save_counter = 0
 
 class Mapper:
     def __init__(self, config=None):
@@ -98,11 +101,7 @@ class Mapper:
         # Queue the IGTL push so the UI thread is not blocked by large sends
         qt.QTimer.singleShot(0, lambda n=loader.magfieldNode: loader.IGTLNode.PushNode(n))
 
-<<<<<<< HEAD:Simulation/Mapper.py
-
-=======
->>>>>>> 38ac049... refactor simulation code to include the server:Simulation/SimulationLib/Mapper.py
-        # time in seconds:
+# time in seconds:
         if time:
             stop = timeit.default_timer()
             execution_time = stop - start
@@ -346,6 +345,95 @@ class Mapper:
         # Jump to maximum point of E field
         pyigtl_data_image = sitkUtils.PullVolumeFromSlicer(loader.pyigtlNode)
         pyigtl_data_array = sitk.GetArrayFromImage(pyigtl_data_image)
+        global _efield_save_counter
+
+        coil_origin = np.array([
+    loader.lastCoilMatrix.GetElement(0,3),
+    loader.lastCoilMatrix.GetElement(1,3),
+    loader.lastCoilMatrix.GetElement(2,3)
+        ])
+
+        coil_x = np.array([
+        loader.lastCoilMatrix.GetElement(0,0),
+        loader.lastCoilMatrix.GetElement(1,0),
+        loader.lastCoilMatrix.GetElement(2,0)
+        ])
+
+        coil_y = np.array([
+        loader.lastCoilMatrix.GetElement(0,1),
+        loader.lastCoilMatrix.GetElement(1,1),
+        loader.lastCoilMatrix.GetElement(2,1)
+        ])
+
+        coil_z = np.array([
+        loader.lastCoilMatrix.GetElement(0,2),
+        loader.lastCoilMatrix.GetElement(1,2),
+        loader.lastCoilMatrix.GetElement(2,2)
+        ])
+
+        # normalize
+        coil_x = coil_x / np.linalg.norm(coil_x)
+        coil_y = coil_y / np.linalg.norm(coil_y)
+        coil_z = coil_z / np.linalg.norm(coil_z)
+
+        # move slightly into the brain from the coil center
+        # adjust this if needed
+        depth_mm = 15.0
+
+        center_ras = coil_origin - depth_mm * coil_z
+
+        grid_size = 151
+        spacing_mm = 1.0
+
+        half = grid_size // 2
+
+        heatmap = np.zeros((grid_size, grid_size))
+
+        for row in range(grid_size):
+
+            for col in range(grid_size):
+
+                dx = (col - half) * spacing_mm
+                dy = (row - half) * spacing_mm
+
+                sample_ras = (
+                center_ras
+                + dx * coil_x
+                + dy * coil_y
+                )
+
+                sample_lps = (
+                -sample_ras[0],
+                -sample_ras[1],
+                    sample_ras[2]
+                )
+
+                try:
+
+                    ijk = pyigtl_data_image.TransformPhysicalPointToIndex(
+                        sample_lps
+                    )
+
+                    heatmap[row, col] = pyigtl_data_array[
+                        ijk[2],
+                        ijk[1],
+                        ijk[0]
+                    ]
+
+                except:
+                    heatmap[row, col] = np.nan
+
+        path = os.path.join(
+            os.path.expanduser('~'),
+            'Desktop',
+            f'efield_{_efield_save_counter}.csv'
+        )
+
+        np.savetxt(path, heatmap, delimiter=',')
+
+        print(f"Saved coil heatmap: {path}")
+
+        _efield_save_counter += 1
 
         max_idx = np.squeeze(np.where(pyigtl_data_array==pyigtl_data_array.max()))
         max_point = pyigtl_data_image.TransformIndexToPhysicalPoint([int(max_idx[2]), int(max_idx[1]), int(max_idx[0])])
